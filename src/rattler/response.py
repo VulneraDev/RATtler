@@ -206,19 +206,21 @@ def _inspect_regular(path: Path) -> Tuple[os.stat_result, str]:
 
 
 def _same_file(metadata: os.stat_result, current: os.stat_result) -> bool:
-    return (
+    stable = (
         metadata.st_dev,
         metadata.st_ino,
         metadata.st_size,
         metadata.st_mtime_ns,
-        metadata.st_ctime_ns,
     ) == (
         current.st_dev,
         current.st_ino,
         current.st_size,
         current.st_mtime_ns,
-        current.st_ctime_ns,
     )
+    # Windows exposes creation/change metadata differently for handle and path
+    # stat calls on some filesystems. POSIX ctime is stable enough to retain as
+    # an additional replacement signal.
+    return stable and (os.name == "nt" or metadata.st_ctime_ns == current.st_ctime_ns)
 
 
 def _validate_reason(reason: str) -> str:
