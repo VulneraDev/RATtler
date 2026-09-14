@@ -159,7 +159,12 @@ class QuarantineTests(unittest.TestCase):
             )
             manifest_path = store / "entries" / applied["id"] / "manifest.json"
             manifest = json.loads(manifest_path.read_text())
-            manifest["original_path"] = "/System/Library/rattler-test"
+            protected = (
+                Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "rattler-test"
+                if os.name == "nt"
+                else Path("/System/Library/rattler-test")
+            )
+            manifest["original_path"] = str(protected)
             manifest_path.write_text(json.dumps(manifest))
             with self.assertRaisesRegex(ResponseError, "protected"):
                 restore_file(applied["id"], store, apply=True)
