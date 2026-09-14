@@ -3,13 +3,16 @@
 This directory contains RATtler's notification-only native macOS collector. It
 subscribes to process, memory-mapping, task-port, tracing, remote-thread, and
 code-signature invalidation events and emits minimal JSONL. It never subscribes
-to authorization events and cannot block system activity.
+to authorization events and cannot block system activity. A separate
+`rattler-es-guard` preview handles ransomware-focused authorization so the
+stable collector remains fail-open.
 
 ## Build
 
 ```sh
 make -C native/macos
 native/macos/build/rattler-es-sensor --help
+native/macos/build/rattler-es-guard --help
 ```
 
 An unsigned build verifies source compatibility but cannot connect to Endpoint
@@ -47,6 +50,42 @@ event loss, code-signature invalidation, writable-executable memory, risky
 executable mappings, remote threads, tracing, and task-port-to-remote-thread
 correlation.
 
-Do not add authorization events until notification-only behavior, performance,
-dropped-event accounting, and failure recovery have been validated on supported
-macOS versions.
+## Ransomware authorization guard
+
+The guard subscribes to authorization events for open-with-write, rename,
+unlink, and create operations beneath explicitly listed user folders. It
+attributes mutations to a PID and executable and uses a ten-second per-process
+window. The default threshold is 80 mutations; three encryption-style names or
+canary access can trip the policy earlier. Apple platform binaries remain
+allowed, decisions are never cached, and the callback responds before writing
+diagnostic output.
+
+Start in shadow mode, which records what would be denied while allowing every
+operation:
+
+```sh
+sudo native/macos/build/rattler-es-guard \
+  --protect "$HOME/Desktop" \
+  --protect "$HOME/Documents" \
+  --protect "$HOME/Pictures" \
+  --mode shadow \
+  --output /var/log/rattler/guard-events.jsonl
+```
+
+Do not point the guard and notification collector at the same output file.
+Protected roots must exist beneath `/Users/<name>`; broad system roots are
+refused. After measuring false positives and verifying recovery, enforcement
+requires both a mode change and an explicit acknowledgement:
+
+```sh
+sudo native/macos/build/rattler-es-guard \
+  --protect "$HOME/Documents" \
+  --mode enforce \
+  --acknowledge-enforcement \
+  --output /var/log/rattler/guard-events.jsonl
+```
+
+Both modes still require the approved entitlement, signing, Full Disk Access,
+and root execution. The community app does not silently activate this preview.
+The bridge maps a shadow threshold crossing to `RAT-RANSOM-100` and an enforced
+deny to `RAT-RANSOM-101`.

@@ -11,6 +11,9 @@
 @property(nonatomic, assign) BOOL scanning;
 - (NSString *)responseErrorFromResult:(NSDictionary *)result fallback:(NSString *)fallback;
 - (BOOL)isValidSHA256:(NSString *)digest;
+- (void)enableRecovery;
+- (void)recoverFiles;
+- (void)resumeRecovery;
 @end
 
 @implementation RATAppDelegate
@@ -123,6 +126,16 @@
     } else if ([action isEqualToString:@"restore"]) {
         NSString *identifier = ((NSDictionary *)message.body)[@"id"];
         [self planRestoreIdentifier:identifier];
+    } else if ([action isEqualToString:@"enableRecovery"]) {
+        [self enableRecovery];
+    } else if ([action isEqualToString:@"recoverFiles"]) {
+        [self recoverFiles];
+    } else if ([action isEqualToString:@"resumeRecovery"]) {
+        [self resumeRecovery];
+    } else if ([action isEqualToString:@"revealRecovery"]) {
+        NSURL *directory = [[self applicationDataDirectory] URLByAppendingPathComponent:@"recovery"
+                                                                              isDirectory:YES];
+        [[NSWorkspace sharedWorkspace] activateFileViewerSelectingURLs:@[directory]];
     } else if ([action isEqualToString:@"capabilities"]) {
         [self sendCapabilities];
     }
@@ -162,7 +175,62 @@
     if ([[NSFileManager defaultManager] fileExistsAtPath:nativeEvents.path]) {
         [arguments addObjectsFromArray:@[@"--native-events", nativeEvents.path]];
     }
+    NSURL *recovery = [directory URLByAppendingPathComponent:@"recovery" isDirectory:YES];
+    if ([[NSFileManager defaultManager] fileExistsAtPath:[[recovery URLByAppendingPathComponent:@"manifest.json"] path]]) {
+        [arguments addObjectsFromArray:@[@"--recovery-store", recovery.path]];
+    }
     return arguments;
+}
+
+- (NSArray<NSString *> *)recoveryBackupArguments {
+    NSURL *store = [[self applicationDataDirectory] URLByAppendingPathComponent:@"recovery" isDirectory:YES];
+    NSString *home = NSHomeDirectory();
+    return @[
+        @"recovery", @"backup", @"--store", store.path,
+        @"--root", [home stringByAppendingPathComponent:@"Desktop"],
+        @"--root", [home stringByAppendingPathComponent:@"Documents"],
+        @"--root", [home stringByAppendingPathComponent:@"Pictures"],
+        @"--apply", @"--pretty",
+    ];
+}
+
+- (BOOL)recoveryEnabled {
+    NSURL *manifest = [[[self applicationDataDirectory] URLByAppendingPathComponent:@"recovery"
+                                                                        isDirectory:YES]
+                       URLByAppendingPathComponent:@"manifest.json"];
+    return [[NSFileManager defaultManager] fileExistsAtPath:manifest.path];
+}
+
+- (NSURL *)recoveryFreezeURL {
+    return [[[self applicationDataDirectory] URLByAppendingPathComponent:@"recovery" isDirectory:YES]
+            URLByAppendingPathComponent:@"frozen"];
+}
+
+- (NSURL *)recoveryErrorURL {
+    return [[[self applicationDataDirectory] URLByAppendingPathComponent:@"recovery" isDirectory:YES]
+            URLByAppendingPathComponent:@"backup-error"];
+}
+
+- (BOOL)recoveryFrozen {
+    return [[NSFileManager defaultManager] fileExistsAtPath:[self recoveryFreezeURL].path];
+}
+
+- (BOOL)reportContainsRansomwareFinding:(NSDictionary *)report {
+    NSDictionary *behavior = [report[@"behavior"] isKindOfClass:[NSDictionary class]] ? report[@"behavior"] : nil;
+    NSArray *findings = [behavior[@"findings"] isKindOfClass:[NSArray class]] ? behavior[@"findings"] : @[];
+    for (id item in findings) {
+        if ([item isKindOfClass:[NSDictionary class]] && [item[@"category"] isEqualToString:@"ransomware"]) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
+- (void)freezeRecoveryForReport:(NSDictionary *)report {
+    if (![self recoveryEnabled] || ![self reportContainsRansomwareFinding:report]) return;
+    NSData *marker = [@"Frozen after ransomware evidence.\n" dataUsingEncoding:NSUTF8StringEncoding];
+    [marker writeToURL:[self recoveryFreezeURL] options:NSDataWritingAtomic error:nil];
+    chmod([self recoveryFreezeURL].fileSystemRepresentation, 0600);
 }
 
 - (void)startScan {
@@ -171,7 +239,20 @@
     [self sendObject:@{@"phase": @"scanning", @"message": @"Inspecting this Mac…"}
             function:@"receiveState"];
     NSArray<NSString *> *arguments = [self scanArguments];
+    BOOL updateRecovery = [self recoveryEnabled] && ![self recoveryFrozen];
+    NSArray<NSString *> *recoveryArguments = updateRecovery ? [self recoveryBackupArguments] : nil;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        if (recoveryArguments != nil) {
+            NSDictionary *recoveryResult = [self runEngineArguments:recoveryArguments];
+            NSURL *errorMarker = [self recoveryErrorURL];
+            if ([recoveryResult[@"status"] intValue] == 0) {
+                [[NSFileManager defaultManager] removeItemAtURL:errorMarker error:nil];
+            } else {
+                NSData *marker = [@"The latest automatic recovery backup failed.\n" dataUsingEncoding:NSUTF8StringEncoding];
+                [marker writeToURL:errorMarker options:NSDataWritingAtomic error:nil];
+                chmod(errorMarker.fileSystemRepresentation, 0600);
+            }
+        }
         NSDictionary *result = [self runEngineArguments:arguments];
         dispatch_async(dispatch_get_main_queue(), ^{
             self.scanning = NO;
@@ -180,6 +261,7 @@
             id report = output.length ? [NSJSONSerialization JSONObjectWithData:output options:0 error:&jsonError] : nil;
             if ([report isKindOfClass:[NSDictionary class]]) {
                 self.lastReport = output;
+                [self freezeRecoveryForReport:(NSDictionary *)report];
                 [self sendData:output function:@"receiveReport"];
                 [self sendObject:@{@"phase": @"ready", @"message": @"Scan completed"}
                         function:@"receiveState"];
@@ -437,6 +519,141 @@
     });
 }
 
+- (void)enableRecovery {
+    if (self.scanning || [self recoveryEnabled]) return;
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Enable the Recovery Vault?";
+    alert.informativeText = @"RATtler will keep up to 512 MB of versioned document and photo copies in private local storage. Nothing is uploaded. The first backup may take several minutes.";
+    alert.alertStyle = NSAlertStyleInformational;
+    [alert addButtonWithTitle:@"Enable Recovery Vault"];
+    [alert addButtonWithTitle:@"Cancel"];
+    if ([alert runModal] != NSAlertFirstButtonReturn) return;
+
+    self.scanning = YES;
+    [self sendObject:@{@"phase": @"scanning", @"message": @"Creating protected recovery copies…"}
+            function:@"receiveState"];
+    NSArray<NSString *> *arguments = [self recoveryBackupArguments];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSDictionary *result = [self runEngineArguments:arguments];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.scanning = NO;
+            NSData *output = result[@"output"];
+            NSDictionary *document = output.length
+                ? [NSJSONSerialization JSONObjectWithData:output options:0 error:nil]
+                : nil;
+            if ([result[@"status"] intValue] == 0 && [document[@"applied"] boolValue]) {
+                [[NSFileManager defaultManager] removeItemAtURL:[self recoveryErrorURL] error:nil];
+                NSInteger count = [document[@"stored_files"] integerValue];
+                [self sendObject:@{
+                    @"success": @YES,
+                    @"message": [NSString stringWithFormat:@"Recovery Vault enabled with %ld protected files.", (long)count],
+                } function:@"receiveResponse"];
+                [self sendCapabilities];
+                [self startScan];
+            } else {
+                NSString *detail = [document[@"error"] isKindOfClass:[NSString class]] ? document[@"error"] : @"The Recovery Vault could not be enabled.";
+                [self sendObject:@{@"phase": @"error", @"message": detail} function:@"receiveState"];
+            }
+        });
+    });
+}
+
+- (void)recoverFiles {
+    if (self.scanning || ![self recoveryEnabled]) return;
+    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+    formatter.dateFormat = @"yyyy-MM-dd-HHmmss";
+    NSString *folder = [NSString stringWithFormat:@"RATtler Recovered %@", [formatter stringFromDate:[NSDate date]]];
+    NSURL *destination = [NSURL fileURLWithPath:[NSHomeDirectory() stringByAppendingPathComponent:@"Desktop"]
+                                     isDirectory:YES];
+    destination = [destination URLByAppendingPathComponent:folder isDirectory:YES];
+    NSURL *store = [[self applicationDataDirectory] URLByAppendingPathComponent:@"recovery" isDirectory:YES];
+    NSArray<NSString *> *planArguments = @[
+        @"recovery", @"restore-all", @"--store", store.path,
+        @"--destination", destination.path, @"--pretty",
+    ];
+    self.scanning = YES;
+    [self sendObject:@{@"phase": @"scanning", @"message": @"Verifying protected recovery copies…"}
+            function:@"receiveState"];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSDictionary *result = [self runEngineArguments:planArguments];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSData *output = result[@"output"];
+            NSDictionary *plan = output.length
+                ? [NSJSONSerialization JSONObjectWithData:output options:0 error:nil]
+                : nil;
+            NSInteger count = [plan[@"planned_files"] integerValue];
+            if ([result[@"status"] intValue] != 0 || count <= 0) {
+                self.scanning = NO;
+                NSString *detail = [plan[@"error"] isKindOfClass:[NSString class]] ? plan[@"error"] : @"No verified recovery copies are available.";
+                [self sendObject:@{@"phase": @"error", @"message": detail} function:@"receiveState"];
+                return;
+            }
+            NSAlert *alert = [[NSAlert alloc] init];
+            alert.messageText = @"Recover protected copies?";
+            alert.informativeText = [NSString stringWithFormat:@"RATtler verified %ld recoverable files. It will copy the previous protected versions into a new Desktop folder and will not overwrite any original file.\n\nDestination: %@", (long)count, destination.path];
+            alert.alertStyle = NSAlertStyleWarning;
+            [alert addButtonWithTitle:@"Recover Copies"];
+            [alert addButtonWithTitle:@"Cancel"];
+            if ([alert runModal] != NSAlertFirstButtonReturn) {
+                self.scanning = NO;
+                [self sendObject:@{@"phase": @"ready", @"message": @"Recovery cancelled"}
+                        function:@"receiveState"];
+                return;
+            }
+            [self sendObject:@{@"phase": @"scanning", @"message": @"Recovering verified copies…"}
+                    function:@"receiveState"];
+            NSArray<NSString *> *applyArguments = @[
+                @"recovery", @"restore-all", @"--store", store.path,
+                @"--destination", destination.path, @"--apply", @"--pretty",
+            ];
+            dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+                NSDictionary *appliedResult = [self runEngineArguments:applyArguments];
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    self.scanning = NO;
+                    NSData *appliedOutput = appliedResult[@"output"];
+                    NSDictionary *applied = appliedOutput.length
+                        ? [NSJSONSerialization JSONObjectWithData:appliedOutput options:0 error:nil]
+                        : nil;
+                    if ([appliedResult[@"status"] intValue] == 0 && [applied[@"applied"] boolValue]) {
+                        NSInteger restored = [applied[@"restored_files"] integerValue];
+                        [self sendObject:@{
+                            @"success": @YES,
+                            @"message": [NSString stringWithFormat:@"Recovered %ld files into a new Desktop folder.", (long)restored],
+                        } function:@"receiveResponse"];
+                        [[NSWorkspace sharedWorkspace] activateFileViewerSelectingURLs:@[destination]];
+                        [self sendObject:@{@"phase": @"ready", @"message": @"Recovery copies created"}
+                                function:@"receiveState"];
+                    } else {
+                        NSString *detail = [applied[@"error"] isKindOfClass:[NSString class]] ? applied[@"error"] : @"Recovery was refused because verification changed.";
+                        [self sendObject:@{@"phase": @"error", @"message": detail} function:@"receiveState"];
+                    }
+                });
+            });
+        });
+    });
+}
+
+- (void)resumeRecovery {
+    if (self.scanning || ![self recoveryFrozen]) return;
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Resume automatic recovery backups?";
+    alert.informativeText = @"Only resume after investigating the ransomware finding and confirming that destructive activity has stopped. Existing recovery versions will remain in the vault.";
+    alert.alertStyle = NSAlertStyleWarning;
+    [alert addButtonWithTitle:@"Resume Backups"];
+    [alert addButtonWithTitle:@"Cancel"];
+    if ([alert runModal] != NSAlertFirstButtonReturn) return;
+    NSError *error = nil;
+    if (![[NSFileManager defaultManager] removeItemAtURL:[self recoveryFreezeURL] error:&error]) {
+        [self sendObject:@{@"phase": @"error", @"message": error.localizedDescription ?: @"Could not resume backups."}
+                function:@"receiveState"];
+        return;
+    }
+    [self sendCapabilities];
+    [self sendObject:@{@"success": @YES, @"message": @"Automatic recovery backups resumed."}
+            function:@"receiveResponse"];
+    [self startScan];
+}
+
 - (NSDictionary *)runEngineArguments:(NSArray<NSString *> *)arguments {
     NSURL *engine = [[NSBundle mainBundle] URLForResource:@"rattler-engine"
                                             withExtension:nil
@@ -514,9 +731,12 @@
     [self sendObject:@{
         @"baseline": @(baseline),
         @"nativeEvents": @(nativeEvents),
+        @"recovery": @([self recoveryEnabled]),
+        @"recoveryFrozen": @([self recoveryFrozen]),
+        @"recoveryError": @([[NSFileManager defaultManager] fileExistsAtPath:[self recoveryErrorURL].path]),
         @"installed": @(installed),
         @"appPath": appPath ?: @"",
-        @"version": @"0.9.0",
+        @"version": @"0.10.0",
     }
             function:@"receiveCapabilities"];
 }

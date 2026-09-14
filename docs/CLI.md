@@ -56,8 +56,37 @@ contents of protected files. A small canary beside the private state file
 detects tampering, and BluePulse checks both artifacts' permissions.
 
 Rules report canary damage, repeated encryption-style extensions, bulk rewrites,
-possible ransom-note names, and mass deletion. This is scan-based detection
-while RATtler is open, not real-time write prevention or file recovery.
+possible ransom-note names, and mass deletion. This sensor is scan-based while
+RATtler is open, not real-time write prevention; opt-in recovery is separate.
+
+## Recovery Vault
+
+Plan the initial local backup, then apply it explicitly:
+
+```sh
+rattler recovery backup --store ~/.rattler/recovery \
+  --root ~/Desktop --root ~/Documents --root ~/Pictures --pretty
+rattler recovery backup --store ~/.rattler/recovery \
+  --root ~/Desktop --root ~/Documents --root ~/Pictures --apply --pretty
+rattler recovery status --store ~/.rattler/recovery --pretty
+```
+
+The default quota is 512 MiB and the per-file limit is 16 MiB. Only common
+document and photo extensions are copied, objects are content-addressed, and up
+to three versions are retained per path. The macOS app refreshes an enabled
+vault before scans and freezes it when a ransomware finding appears.
+
+Recovery is also planned before application and always targets a new directory:
+
+```sh
+rattler recovery restore-all --store ~/.rattler/recovery \
+  --destination ~/Desktop/RATtler-Recovered --pretty
+rattler recovery restore-all --store ~/.rattler/recovery \
+  --destination ~/Desktop/RATtler-Recovered --apply --pretty
+```
+
+The destination must not already exist. Stored object hashes are verified, and
+the command never writes over an original file.
 
 ## Integrity baseline
 

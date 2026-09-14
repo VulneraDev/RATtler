@@ -52,14 +52,32 @@ This layer is detection-only. It cannot stop writes already in progress or
 recover encrypted files, and same-user malware could tamper with its local
 state. Kernel-mediated authorization and root-owned state remain later gates.
 
-## 0.10 — Endpoint Security prevention preview
+## 0.10 — Recovery and prevention preview
 
-Status: design and entitlement gate.
+Status: recovery implemented; native enforcement entitlement-gated.
+
+- Provide an opt-in, 512 MiB, content-addressed Recovery Vault for common
+  documents and photos.
+- Retain up to three versions and freeze automatic updates after ransomware
+  evidence so clean generations are not aged out.
+- Verify stored hashes and recover into a new directory without overwriting an
+  original file.
+- Compile a separate Endpoint Security authorization guard that starts in
+  shadow mode, attributes mutations to a PID and executable, and evaluates
+  per-process mutation velocity, encryption-style renames, ransom notes, and
+  canary access.
+- Require an explicit command-line acknowledgement before the native guard can
+  enter enforcement mode.
+
+The downloadable community app can use Recovery Vault now. The authorization
+guard cannot activate there until Apple grants the restricted entitlement and
+the signed system-extension work below is complete.
 
 Apple's current [Endpoint Security](https://developer.apple.com/documentation/endpointsecurity)
-model delivers kernel-mediated events to a user-space client. RATtler will add
-execution authorization only after the notification sensor meets latency,
-event-loss, and recovery budgets on every supported macOS version.
+model delivers kernel-mediated events to a user-space client. RATtler will
+package and enable authorization only after the notification sensor and new
+guard meet latency, event-loss, false-positive, and recovery budgets on every
+supported macOS version.
 
 The prevention client will:
 

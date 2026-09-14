@@ -10,10 +10,11 @@ from .baseline import check_baseline, create_baseline
 from .behavior import scan_behavior
 from .bluepulse import evaluate_bluepulse
 from .events import update_events
-from .model import Assessment, BehaviorReport, Status
+from .model import Assessment, BehaviorReport, Check, Status
 from .native_bridge import ingest_native_events
 from .providers import select_provider
 from .ransomware import DEFAULT_MAX_FILES, scan_ransomware
+from .recovery import status as recovery_status
 
 
 EXIT_CODES = {
@@ -51,6 +52,7 @@ def _parser() -> argparse.ArgumentParser:
         "--ransomware-max-files", type=int, default=DEFAULT_MAX_FILES,
         help="maximum number of files sampled by ransomware monitoring",
     )
+    parser.add_argument("--recovery-store", metavar="PATH", help="report local recovery-vault health")
     parser.add_argument(
         "--exclude-pid", metavar="PID", type=int, action="append", default=[],
         help="exclude one trusted host process PID (repeatable)",
@@ -68,6 +70,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         from .response_cli import main as response_main
 
         return response_main(raw_arguments[1:])
+    if raw_arguments and raw_arguments[0] == "recovery":
+        from .recovery import main as recovery_main
+
+        return recovery_main(raw_arguments[1:])
     args = _parser().parse_args(raw_arguments)
     if args.interval <= 0:
         _parser().error("--interval must be greater than zero")
@@ -143,6 +149,24 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     findings=behavior.findings + ransomware_findings,
                     events=behavior.events + ransomware_events,
                 )
+            if args.recovery_store:
+                try:
+                    recovery = recovery_status(Path(args.recovery_store))
+                    recovery_check = Check(
+                        "recovery_vault",
+                        Status.HEALTHY if recovery.get("enabled") else Status.UNKNOWN,
+                        "recovery copies available" if recovery.get("enabled") else "recovery vault is not initialized",
+                        recovery,
+                    )
+                except (OSError, ValueError, TypeError, json.JSONDecodeError) as error:
+                    recovery_check = Check(
+                        "recovery_vault", Status.UNKNOWN, "recovery vault unavailable", {"error": str(error)},
+                    )
+                behavior = BehaviorReport(
+                    sensors=behavior.sensors + [recovery_check],
+                    findings=behavior.findings,
+                    events=behavior.events,
+                )
             protection = provider.report()
             bluepulse = evaluate_bluepulse(
                 protection.checks,
@@ -153,6 +177,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 baseline_path=Path(args.baseline) if args.baseline else None,
                 native_event_path=Path(args.native_events) if args.native_events else None,
                 ransomware_state_path=Path(args.ransomware_state) if args.ransomware_state else None,
+                recovery_store_path=Path(args.recovery_store) if args.recovery_store else None,
             )
             behavior = BehaviorReport(
                 sensors=behavior.sensors + [bluepulse],

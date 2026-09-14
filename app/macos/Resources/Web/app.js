@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const state = { report: null, quarantine: [], capabilities: { baseline: false, nativeEvents: false, installed: true, appPath: "", version: "0.9.0" }, phase: "starting", autoTimer: null };
+  const state = { report: null, quarantine: [], capabilities: { baseline: false, nativeEvents: false, recovery: false, recoveryFrozen: false, recoveryError: false, installed: true, appPath: "", version: "0.10.0" }, phase: "starting", autoTimer: null };
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const esc = value => String(value ?? "—").replace(/[&<>'"]/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[char]));
@@ -98,6 +98,7 @@
     if (!state.report) { $("#ransomware-content").innerHTML = empty("▣","No file-defense report yet","Run a scan to initialize protected-folder monitoring."); return; }
     const behavior = state.report.behavior || {};
     const sensor = ransomwareCheck(behavior) || {status:"unknown",message:"Ransomware sensor unavailable",details:{}};
+    const recoverySensor = (behavior.sensors || []).find(item => item.name === "recovery_vault");
     const details = sensor.details || {};
     const findings = (behavior.findings || []).filter(item => item.category === "ransomware").sort((a,b) => severityRank(b.severity)-severityRank(a.severity));
     const severe = findings.some(item => ["critical","high"].includes(item.severity));
@@ -116,6 +117,13 @@
       {name:"ransom_notes",status:Number(details.ransom_notes||0)?"unhealthy":"healthy",message:Number(details.ransom_notes||0)?`${Number(details.ransom_notes)} possible ransom note detected.`:"No new ransom-note filename was detected."}
     ];
     const indicatorList = findings.length ? findings.map(finding => `<div class="ransom-finding">${findingRow(finding)}${evidence(finding.evidence)}</div>`).join("") : `<div class="ransom-clear"><span>✓</span><div><strong>No active ransomware indicators</strong><p>Normal file changes can still occur; RATtler alerts only when a defined behavior threshold is crossed.</p></div></div>`;
+    const recoveryEnabled = state.capabilities.recovery === true;
+    const recoveryFrozen = state.capabilities.recoveryFrozen === true;
+    const recoveryError = state.capabilities.recoveryError === true;
+    const recoveryDetails = recoverySensor?.details || {};
+    const recoveryHeadline = !recoveryEnabled ? "Recovery Vault is off" : recoveryFrozen ? "Clean recovery versions are frozen" : recoveryError ? "Recovery Vault needs attention" : "Recovery Vault is active";
+    const recoveryCopy = !recoveryEnabled ? "Opt in to keep quota-limited, versioned copies of common documents and photos entirely on this Mac." : recoveryFrozen ? "RATtler stopped adding versions after ransomware evidence so known-good copies are not aged out." : recoveryError ? "The latest automatic backup failed. Open the vault and run another scan after checking free space and folder access." : `${Number(recoveryDetails.recoverable_files||0).toLocaleString()} files have protected versions. Backups refresh automatically while RATtler is open.`;
+    const recoveryActions = !recoveryEnabled ? `<button id="enable-recovery-button" class="quiet-button primary">Enable vault</button>` : `${severe||recoveryFrozen?`<button id="recover-files-button" class="quiet-button primary">Recover copies</button>`:""}<button id="reveal-recovery-button" class="quiet-button">Open vault</button>${recoveryFrozen?`<button id="resume-recovery-button" class="quiet-button warning">Resume backups</button>`:""}`;
     $("#ransomware-content").innerHTML = `
       <article class="panel ransom-hero ${esc(heroStatus)}"><div class="ransom-emblem">${icon("lock")}<i></i></div><div class="ransom-copy"><div class="status-kicker">${severe?"ACTION REQUIRED":warning?"REVIEW COVERAGE":"MONITORING"}</div><h2>${esc(headline)}</h2><p>${esc(copy)}</p><small>Detection observes changes while RATtler is open. Automatic write blocking is not enabled.</small></div><div class="ransom-sweep"><i></i></div></article>
       <div class="metrics ransom-metrics">
@@ -128,8 +136,13 @@
         <article class="panel card-block"><div class="card-title"><div><h3>Ransomware signals</h3><p>Independent evidence checked on each scan</p></div><span>${esc(details.detection_mode||"snapshot monitoring")}</span></div>${signals.map(checkRow).join("")}</article>
         <article class="panel card-block"><div class="card-title"><div><h3>Protected folders</h3><p>Metadata only—RATtler does not upload file contents</p></div></div><div class="folder-pills">${folders.length?folders.map(folder=>`<span>${icon("folder")}${esc(folder)}</span>`).join(""):`<p>Desktop, Documents, and Pictures could not be read. Review macOS folder permissions.</p>`}</div><div class="ransom-limit"><strong>${details.limited?"PARTIAL COVERAGE":"BOUNDED COVERAGE"}</strong><span>Up to ${Number(details.max_files||0).toLocaleString()} files per scan</span></div></article>
       </div>
+      <article class="panel recovery-card ${recoveryFrozen||recoveryError?"frozen":recoveryEnabled?"active":""}"><span class="recovery-symbol">${icon("shield")}</span><div><div class="status-kicker">${!recoveryEnabled?"OPT-IN RECOVERY":recoveryFrozen?"VAULT FROZEN":recoveryError?"BACKUP ERROR":"VERSIONED LOCALLY"}</div><h3>${esc(recoveryHeadline)}</h3><p>${esc(recoveryCopy)}</p><small>512 MB quota · common documents and photos · recovery never overwrites originals</small></div><div class="recovery-actions">${recoveryActions}</div></article>
       <article class="panel card-block ransom-indicators"><div class="card-title"><div><h3>Current ransomware indicators</h3><p>Evidence is also available in Findings and the local Activity timeline</p></div><span>${findings.length} active</span></div>${indicatorList}</article>`;
     $$(".ransom-finding", $("#ransomware-content")).forEach(row => row.addEventListener("click", () => row.classList.toggle("expanded")));
+    $("#enable-recovery-button")?.addEventListener("click",()=>native("enableRecovery"));
+    $("#recover-files-button")?.addEventListener("click",()=>native("recoverFiles"));
+    $("#reveal-recovery-button")?.addEventListener("click",()=>native("revealRecovery"));
+    $("#resume-recovery-button")?.addEventListener("click",()=>native("resumeRecovery"));
   }
   function renderBluePulse() {
     if (!state.report) { $("#bluepulse-content").innerHTML = empty("⌁","No confidence report yet","Run a scan so BluePulse can verify each available layer."); return; }

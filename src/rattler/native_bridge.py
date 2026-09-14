@@ -24,6 +24,7 @@ ALLOWED_EVENTS = {
     "exec", "fork", "exit", "mmap", "mprotect", "get_task",
     "get_task_read", "get_task_inspect", "trace",
     "remote_thread_create", "cs_invalidated", "heartbeat",
+    "ransomware_guard",
 }
 
 
@@ -95,6 +96,19 @@ def translate_native_event(raw: Dict[str, object], identity: str) -> Tuple[Event
             "RAT-NATIVE-005", "Process tracing or debugger attachment observed", Severity.HIGH,
             "injection", "One process attempted to trace or attach to another process.", evidence,
         ))
+    elif event_type == "ransomware_guard":
+        if raw.get("blocked") is True:
+            severity = Severity.CRITICAL
+            findings.append(Finding(
+                "RAT-RANSOM-101", "Native guard blocked destructive file activity", Severity.CRITICAL,
+                "ransomware", "The Endpoint Security guard denied another protected-folder mutation.", evidence,
+            ))
+        elif raw.get("would_block") is True:
+            severity = Severity.HIGH
+            findings.append(Finding(
+                "RAT-RANSOM-100", "Native guard shadow policy crossed its threshold", Severity.HIGH,
+                "ransomware", "The guard would have blocked this mutation if enforcement were enabled.", evidence,
+            ))
     return Event(identity, "native_" + str(event_type), severity, observed_at, evidence), findings
 
 

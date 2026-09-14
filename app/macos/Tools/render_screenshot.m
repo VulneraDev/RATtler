@@ -50,8 +50,11 @@
     NSData *capabilities = [NSJSONSerialization dataWithJSONObject:@{
         @"baseline": @YES,
         @"nativeEvents": @YES,
+        @"recovery": @YES,
+        @"recoveryFrozen": @([self.viewID isEqualToString:@"ransomware"]),
+        @"recoveryError": @NO,
         @"installed": @YES,
-        @"version": @"0.9.0",
+        @"version": @"0.10.0",
     } options:0 error:nil];
     NSData *ready = [NSJSONSerialization dataWithJSONObject:@{
         @"phase": @"ready",
@@ -62,11 +65,15 @@
          "window.RATtler.receiveCapabilities('%@');"
          "window.RATtler.receiveReport('%@');"
          "window.RATtler.receiveState('%@');"
-         "document.querySelector('[data-view=\"%@\"]')?.click();",
+         "document.querySelector('[data-view=\"%@\"]')?.click();"
+         "%@",
         [capabilities base64EncodedStringWithOptions:0],
         [self.reportData base64EncodedStringWithOptions:0],
         [ready base64EncodedStringWithOptions:0],
-        self.viewID];
+        self.viewID,
+        [self.viewID isEqualToString:@"ransomware"]
+            ? @"document.querySelector('#ransomware-content').style.zoom='0.78';"
+            : @""];
     [self.webView evaluateJavaScript:script completionHandler:^(id value, NSError *error) {
         (void)value;
         if (error != nil) {

@@ -11,8 +11,8 @@ the computer unless you export a report yourself.
 
 Download **one ZIP**—not both:
 
-- [Mac with an Apple chip](https://github.com/VulneraDev/RATtler/releases/download/v0.9.0/RATtler-macOS-Apple-Silicon.zip)
-- [Mac with an Intel processor](https://github.com/VulneraDev/RATtler/releases/download/v0.9.0/RATtler-macOS-Intel.zip)
+- [Mac with an Apple chip](https://github.com/VulneraDev/RATtler/releases/download/v0.10.0/RATtler-macOS-Apple-Silicon.zip)
+- [Mac with an Intel processor](https://github.com/VulneraDev/RATtler/releases/download/v0.10.0/RATtler-macOS-Intel.zip)
 
 Not sure which Mac you have? Open **Apple menu → About This Mac**:
 
@@ -73,8 +73,21 @@ filenames, mass deletion, and modification of a harmless local canary.
 
 Monitoring is local, bounded to 25,000 files, and runs on each scan while
 RATtler is open. RATtler does not read or upload protected-file contents. This
-release detects and explains suspicious changes; it does not automatically
-block writes, kill processes, or restore encrypted data.
+release detects and explains suspicious changes. Kernel-mediated write blocking
+still requires Apple's restricted Endpoint Security entitlement.
+
+### Recovery Vault
+
+Choose **Enable vault** in the Ransomware tab to keep versioned recovery copies
+of common documents and photos. The vault is opt-in, private to the current Mac,
+limited to 512 MB, and retains up to three versions per eligible file. After a
+ransomware finding, RATtler freezes automatic backups so clean versions are not
+aged out.
+
+**Recover copies** verifies the stored objects and creates a new timestamped
+folder on the Desktop. It never overwrites, deletes, or silently replaces the
+original files. Recovery is intentionally separate from detection because the
+vault reads eligible file contents only after the user opts in.
 
 ![RATtler Ransomware Defense](docs/images/rattler-ransomware.png)
 
@@ -100,6 +113,8 @@ Risk detected:
 - Code-signing and Team ID mismatches
 - Ransomware-style bulk rewrites, extension churn, ransom notes, mass deletion,
   and local canary damage
+- Opt-in, quota-limited, content-addressed recovery copies with automatic freeze
+  on ransomware evidence
 - BluePulse sensor confidence, scan freshness, state permissions, and event loss
 - Gatekeeper and XProtect health on macOS
 - Microsoft Defender health on Windows
@@ -127,6 +142,8 @@ the file again and never overwrites an existing destination.
 - The current Endpoint Security collector is detection-only.
 - Ransomware monitoring records file paths, size, modification time, and inode
   locally; it does not inspect protected-file contents.
+- Recovery Vault reads eligible document and photo contents only after explicit
+  opt-in and stores them locally under Application Support.
 - BluePulse is tamper-evident within the app’s current permissions; it is not a
   substitute for the planned signed system extension and root-owned state.
 
@@ -141,7 +158,7 @@ only if you also want to remove reports, baselines, and quarantined files.
 
 ## Developers
 
-Python, CLI, baseline, event-correlation, quarantine, and safe-canary commands
+Python, CLI, baseline, event-correlation, quarantine, recovery, and safe-canary commands
 are in the [CLI guide](docs/CLI.md). Build and packaging instructions are in the
 [macOS app guide](app/macos/README.md). Native sensor provisioning is in the
 [Endpoint Security guide](native/macos/README.md).

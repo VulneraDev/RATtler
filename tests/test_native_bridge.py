@@ -58,6 +58,20 @@ class NativeTranslationTests(unittest.TestCase):
         self.assertEqual(findings[0].rule_id, "RAT-NATIVE-006")
         self.assertEqual(derived[0].severity, Severity.CRITICAL)
 
+    def test_ransomware_guard_shadow_and_enforcement_decisions(self):
+        shadow_event, shadow_findings = translate_native_event(
+            native_event("ransomware_guard", would_block=True, blocked=False, reason="rapid_file_mutations"),
+            "shadow",
+        )
+        blocked_event, blocked_findings = translate_native_event(
+            native_event("ransomware_guard", would_block=True, blocked=True, reason="canary_write"),
+            "blocked",
+        )
+        self.assertEqual(shadow_event.severity, Severity.HIGH)
+        self.assertEqual(shadow_findings[0].rule_id, "RAT-RANSOM-100")
+        self.assertEqual(blocked_event.severity, Severity.CRITICAL)
+        self.assertEqual(blocked_findings[0].rule_id, "RAT-RANSOM-101")
+
 
 class NativeCursorTests(unittest.TestCase):
     def test_initializes_at_end_then_ingests_appended_events(self):
@@ -122,6 +136,13 @@ class NativeCursorTests(unittest.TestCase):
         source = (ROOT / "native/macos/Sources/rattler_es_sensor.c").read_text(encoding="utf-8")
         self.assertIn("emit_heartbeat", source)
         self.assertIn("15 * NSEC_PER_SEC", source)
+
+    def test_native_guard_defaults_to_shadow_and_requires_enforcement_acknowledgement(self):
+        source = (ROOT / "native/macos/Sources/rattler_es_guard.c").read_text(encoding="utf-8")
+        self.assertIn("g_mode = GUARD_SHADOW", source)
+        self.assertIn("--acknowledge-enforcement", source)
+        self.assertIn("ES_EVENT_TYPE_AUTH_OPEN", source)
+        self.assertIn("es_respond_flags_result", source)
 
 
 if __name__ == "__main__":

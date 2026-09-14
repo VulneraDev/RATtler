@@ -15,6 +15,11 @@ encryption-style renames, ransom-note filenames, mass deletion, and local
 canary damage without reading or uploading protected-file contents. Automatic
 monitoring is enabled by default and runs every 60 seconds while the app is open.
 
+Recovery Vault is optional. After native confirmation it keeps up to 512 MB of
+versioned, content-addressed document and photo copies beneath Application
+Support. Automatic updates freeze on ransomware evidence. Reviewed recovery
+creates a new Desktop folder and never overwrites originals.
+
 ## Install the app
 
 Download one ZIP from the main [README](../../README.md), open it, then drag

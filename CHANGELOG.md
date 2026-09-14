@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.10.0
+
+- Add an opt-in, 512 MiB Recovery Vault for versioned documents and photos
+- Refresh recovery versions automatically while the app is open and freeze the
+  vault when ransomware evidence appears
+- Verify content-addressed objects and recover previous versions into a new
+  Desktop folder without overwriting originals
+- Add a separately compiled Endpoint Security ransomware guard with shadow and
+  explicitly acknowledged enforcement modes
+- Attribute protected-folder mutations to processes and evaluate mutation rate,
+  encryption-style names, ransom notes, and canary access before a deny decision
+- Surface native shadow and block decisions as explainable ransomware findings
+
 ## 0.9.0
 
 - Add a dedicated Ransomware Defense tab to the macOS application

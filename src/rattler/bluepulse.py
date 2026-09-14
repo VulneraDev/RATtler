@@ -62,6 +62,7 @@ def evaluate_bluepulse(
     baseline_path: Optional[Path] = None,
     native_event_path: Optional[Path] = None,
     ransomware_state_path: Optional[Path] = None,
+    recovery_store_path: Optional[Path] = None,
 ) -> Check:
     """Return an explainable confidence check for the current scan."""
     checks = [
@@ -89,6 +90,8 @@ def evaluate_bluepulse(
         artifacts.append((
             "ransomware canary", ransomware_state_path.with_name("ransomware-canary.txt"), True, False,
         ))
+    if recovery_store_path is not None:
+        artifacts.append(("recovery manifest", recovery_store_path / "manifest.json", True, False))
 
     artifact_issues = []
     artifacts_checked = 0
