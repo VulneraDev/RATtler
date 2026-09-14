@@ -1,0 +1,305 @@
+#import <AppKit/AppKit.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
+#import <WebKit/WebKit.h>
+#import <sys/stat.h>
+#import <unistd.h>
+
+@interface RATAppDelegate : NSObject <NSApplicationDelegate, WKScriptMessageHandler, WKNavigationDelegate>
+@property(nonatomic, strong) NSWindow *window;
+@property(nonatomic, strong) WKWebView *webView;
+@property(nonatomic, strong) NSData *lastReport;
+@property(nonatomic, assign) BOOL scanning;
+@end
+
+@implementation RATAppDelegate
+
+- (void)applicationDidFinishLaunching:(NSNotification *)notification {
+    (void)notification;
+    WKUserContentController *messages = [[WKUserContentController alloc] init];
+    [messages addScriptMessageHandler:self name:@"rattler"];
+
+    WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
+    configuration.userContentController = messages;
+    configuration.preferences.javaScriptCanOpenWindowsAutomatically = NO;
+
+    self.webView = [[WKWebView alloc] initWithFrame:NSZeroRect configuration:configuration];
+    self.webView.navigationDelegate = self;
+    self.webView.allowsMagnification = NO;
+    self.webView.wantsLayer = YES;
+    self.webView.layer.backgroundColor = [NSColor colorWithRed:0.035 green:0.047 blue:0.065 alpha:1].CGColor;
+
+    NSWindowStyleMask style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
+        NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable | NSWindowStyleMaskFullSizeContentView;
+    self.window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 1180, 760)
+                                               styleMask:style
+                                                 backing:NSBackingStoreBuffered
+                                                   defer:NO];
+    self.window.title = @"RATtler";
+    self.window.titleVisibility = NSWindowTitleHidden;
+    self.window.titlebarAppearsTransparent = YES;
+    self.window.backgroundColor = [NSColor colorWithRed:0.035 green:0.047 blue:0.065 alpha:1];
+    self.window.minSize = NSMakeSize(980, 650);
+    self.window.contentView = self.webView;
+    self.window.collectionBehavior = NSWindowCollectionBehaviorFullScreenPrimary;
+    [self.window setFrameAutosaveName:@"RATtlerMainWindow"];
+    [self.window center];
+    [self.window makeKeyAndOrderFront:nil];
+
+    NSURL *page = [[NSBundle mainBundle] URLForResource:@"index" withExtension:@"html" subdirectory:@"Web"];
+    NSURL *directory = [page URLByDeletingLastPathComponent];
+    if (page != nil) {
+        [self.webView loadFileURL:page allowingReadAccessToURL:directory];
+    } else {
+        [self showNativeError:@"The RATtler interface is missing from this app build."];
+    }
+    [NSApp activateIgnoringOtherApps:YES];
+}
+
+- (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender {
+    (void)sender;
+    return YES;
+}
+
+- (BOOL)applicationSupportsSecureRestorableState:(NSApplication *)application {
+    (void)application;
+    return YES;
+}
+
+- (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
+    (void)webView;
+    (void)navigation;
+    [self sendCapabilities];
+    [self startScan];
+}
+
+- (void)webView:(WKWebView *)webView
+    decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction
+                   decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
+    (void)webView;
+    NSURL *url = navigationAction.request.URL;
+    if (navigationAction.navigationType == WKNavigationTypeLinkActivated && !url.isFileURL) {
+        if (url != nil && [@[@"https", @"http"] containsObject:url.scheme.lowercaseString]) {
+            [[NSWorkspace sharedWorkspace] openURL:url];
+        }
+        decisionHandler(WKNavigationActionPolicyCancel);
+        return;
+    }
+    decisionHandler(WKNavigationActionPolicyAllow);
+}
+
+- (void)userContentController:(WKUserContentController *)userContentController
+      didReceiveScriptMessage:(WKScriptMessage *)message {
+    (void)userContentController;
+    if (![message.body isKindOfClass:[NSDictionary class]]) return;
+    NSString *action = ((NSDictionary *)message.body)[@"action"];
+    if ([action isEqualToString:@"scan"]) {
+        [self startScan];
+    } else if ([action isEqualToString:@"baseline"]) {
+        [self createBaseline];
+    } else if ([action isEqualToString:@"export"]) {
+        [self exportReport];
+    } else if ([action isEqualToString:@"reveal"]) {
+        NSURL *directory = [self applicationDataDirectory];
+        [[NSWorkspace sharedWorkspace] activateFileViewerSelectingURLs:@[directory]];
+    } else if ([action isEqualToString:@"capabilities"]) {
+        [self sendCapabilities];
+    }
+}
+
+- (NSURL *)applicationDataDirectory {
+    NSURL *base = [[[NSFileManager defaultManager] URLsForDirectory:NSApplicationSupportDirectory
+                                                          inDomains:NSUserDomainMask] firstObject];
+    NSURL *directory = [base URLByAppendingPathComponent:@"RATtler" isDirectory:YES];
+    [[NSFileManager defaultManager] createDirectoryAtURL:directory
+                             withIntermediateDirectories:YES
+                                              attributes:@{NSFilePosixPermissions: @0700}
+                                                   error:nil];
+    chmod(directory.fileSystemRepresentation, 0700);
+    return directory;
+}
+
+- (NSArray<NSString *> *)scanArguments {
+    NSURL *directory = [self applicationDataDirectory];
+    NSURL *state = [directory URLByAppendingPathComponent:@"state.json"];
+    NSURL *journal = [directory URLByAppendingPathComponent:@"events.jsonl"];
+    NSURL *baseline = [directory URLByAppendingPathComponent:@"baseline.json"];
+    NSURL *nativeEvents = [directory URLByAppendingPathComponent:@"native-events.jsonl"];
+    NSMutableArray<NSString *> *arguments = [NSMutableArray arrayWithArray:@[
+        @"--state", state.path, @"--journal", journal.path, @"--pretty"
+    ]];
+    if ([[NSFileManager defaultManager] fileExistsAtPath:baseline.path]) {
+        [arguments addObjectsFromArray:@[@"--baseline", baseline.path]];
+    }
+    if ([[NSFileManager defaultManager] fileExistsAtPath:nativeEvents.path]) {
+        [arguments addObjectsFromArray:@[@"--native-events", nativeEvents.path]];
+    }
+    return arguments;
+}
+
+- (void)startScan {
+    if (self.scanning) return;
+    self.scanning = YES;
+    [self sendObject:@{@"phase": @"scanning", @"message": @"Inspecting this Mac…"}
+            function:@"receiveState"];
+    NSArray<NSString *> *arguments = [self scanArguments];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSDictionary *result = [self runEngineArguments:arguments];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.scanning = NO;
+            NSData *output = result[@"output"];
+            NSError *jsonError = nil;
+            id report = output.length ? [NSJSONSerialization JSONObjectWithData:output options:0 error:&jsonError] : nil;
+            if ([report isKindOfClass:[NSDictionary class]]) {
+                self.lastReport = output;
+                [self sendData:output function:@"receiveReport"];
+                [self sendObject:@{@"phase": @"ready", @"message": @"Scan completed"}
+                        function:@"receiveState"];
+            } else {
+                NSString *detail = result[@"error"];
+                if (detail.length == 0) detail = jsonError.localizedDescription ?: @"The detection engine returned no report.";
+                [self sendObject:@{@"phase": @"error", @"message": detail}
+                        function:@"receiveState"];
+            }
+            [self sendCapabilities];
+        });
+    });
+}
+
+- (void)createBaseline {
+    if (self.scanning) return;
+    self.scanning = YES;
+    NSURL *baseline = [[self applicationDataDirectory] URLByAppendingPathComponent:@"baseline.json"];
+    [self sendObject:@{@"phase": @"scanning", @"message": @"Creating integrity baseline…"}
+            function:@"receiveState"];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSDictionary *result = [self runEngineArguments:@[@"--create-baseline", baseline.path, @"--pretty"]];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.scanning = NO;
+            if ([result[@"status"] intValue] == 0) {
+                [self sendObject:@{@"phase": @"ready", @"message": @"Integrity baseline created"}
+                        function:@"receiveState"];
+                [self sendCapabilities];
+                [self startScan];
+            } else {
+                NSString *detail = result[@"error"];
+                if (detail.length == 0) detail = @"The integrity baseline could not be created.";
+                [self sendObject:@{@"phase": @"error", @"message": detail}
+                        function:@"receiveState"];
+            }
+        });
+    });
+}
+
+- (NSDictionary *)runEngineArguments:(NSArray<NSString *> *)arguments {
+    NSURL *engine = [[NSBundle mainBundle] URLForResource:@"rattler-engine"
+                                            withExtension:nil
+                                             subdirectory:@"Engine"];
+    if (engine == nil || ![[NSFileManager defaultManager] isExecutableFileAtPath:engine.path]) {
+        return @{@"output": [NSData data], @"error": @"The RATtler detection engine is missing from this app build.", @"status": @127};
+    }
+
+    char outputTemplate[] = "/tmp/rattler-ui-output-XXXXXX";
+    char errorTemplate[] = "/tmp/rattler-ui-error-XXXXXX";
+    int outputDescriptor = mkstemp(outputTemplate);
+    int errorDescriptor = mkstemp(errorTemplate);
+    if (outputDescriptor < 0 || errorDescriptor < 0) {
+        if (outputDescriptor >= 0) {
+            close(outputDescriptor);
+            unlink(outputTemplate);
+        }
+        if (errorDescriptor >= 0) {
+            close(errorDescriptor);
+            unlink(errorTemplate);
+        }
+        return @{@"output": [NSData data], @"error": @"RATtler could not create private engine output.", @"status": @126};
+    }
+    unlink(outputTemplate);
+    unlink(errorTemplate);
+    NSFileHandle *output = [[NSFileHandle alloc] initWithFileDescriptor:outputDescriptor closeOnDealloc:YES];
+    NSFileHandle *error = [[NSFileHandle alloc] initWithFileDescriptor:errorDescriptor closeOnDealloc:YES];
+
+    NSTask *task = [[NSTask alloc] init];
+    task.executableURL = engine;
+    task.arguments = arguments;
+    task.standardInput = [NSFileHandle fileHandleWithNullDevice];
+    task.standardOutput = output;
+    task.standardError = error;
+    NSError *launchError = nil;
+    if (![task launchAndReturnError:&launchError]) {
+        return @{@"output": [NSData data], @"error": launchError.localizedDescription ?: @"Engine launch failed", @"status": @126};
+    }
+    [task waitUntilExit];
+    [output synchronizeFile];
+    [error synchronizeFile];
+    [output seekToFileOffset:0];
+    [error seekToFileOffset:0];
+    NSData *outputData = [output readDataToEndOfFile];
+    NSData *errorData = [error readDataToEndOfFile];
+    NSString *errorText = [[NSString alloc] initWithData:errorData encoding:NSUTF8StringEncoding] ?: @"";
+    return @{@"output": outputData, @"error": [errorText stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet], @"status": @(task.terminationStatus)};
+}
+
+- (void)exportReport {
+    if (self.lastReport.length == 0) return;
+    NSSavePanel *panel = [NSSavePanel savePanel];
+    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+    formatter.dateFormat = @"yyyy-MM-dd-HHmm";
+    panel.nameFieldStringValue = [NSString stringWithFormat:@"RATtler-report-%@.json", [formatter stringFromDate:[NSDate date]]];
+    panel.allowedContentTypes = @[UTTypeJSON];
+    if ([panel runModal] != NSModalResponseOK || panel.URL == nil) return;
+    NSError *error = nil;
+    if (![self.lastReport writeToURL:panel.URL options:NSDataWritingAtomic error:&error]) {
+        [self sendObject:@{@"phase": @"error", @"message": error.localizedDescription ?: @"The report could not be exported."}
+                function:@"receiveState"];
+    } else {
+        [self sendObject:@{@"phase": @"ready", @"message": @"Report exported"}
+                function:@"receiveState"];
+    }
+}
+
+- (void)sendCapabilities {
+    NSURL *directory = [self applicationDataDirectory];
+    BOOL baseline = [[NSFileManager defaultManager] fileExistsAtPath:[[directory URLByAppendingPathComponent:@"baseline.json"] path]];
+    BOOL nativeEvents = [[NSFileManager defaultManager] fileExistsAtPath:[[directory URLByAppendingPathComponent:@"native-events.jsonl"] path]];
+    [self sendObject:@{@"baseline": @(baseline), @"nativeEvents": @(nativeEvents), @"version": @"0.7.0"}
+            function:@"receiveCapabilities"];
+}
+
+- (void)sendObject:(NSDictionary *)object function:(NSString *)function {
+    NSData *data = [NSJSONSerialization dataWithJSONObject:object options:0 error:nil];
+    [self sendData:data function:function];
+}
+
+- (void)sendData:(NSData *)data function:(NSString *)function {
+    NSString *base64 = [data base64EncodedStringWithOptions:0];
+    NSString *script = [NSString stringWithFormat:@"window.RATtler.%@('%@')", function, base64];
+    [self.webView evaluateJavaScript:script completionHandler:^(id value, NSError *error) {
+        (void)value;
+        if (error != nil) NSLog(@"RATtler interface error: %@", error.localizedDescription);
+    }];
+}
+
+- (void)showNativeError:(NSString *)message {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"RATtler could not start";
+    alert.informativeText = message;
+    alert.alertStyle = NSAlertStyleCritical;
+    [alert runModal];
+}
+
+@end
+
+static RATAppDelegate *g_appDelegate;
+
+int main(int argc, const char *argv[]) {
+    (void)argc;
+    (void)argv;
+    @autoreleasepool {
+        NSApplication *application = [NSApplication sharedApplication];
+        g_appDelegate = [[RATAppDelegate alloc] init];
+        application.delegate = g_appDelegate;
+        application.activationPolicy = NSApplicationActivationPolicyRegular;
+        [application run];
+    }
+    return 0;
+}

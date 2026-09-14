@@ -35,6 +35,37 @@ rattler --pretty
 rattler --watch --interval 30 --changes-only
 ```
 
+## macOS desktop app
+
+RATtler 0.7 includes a native Community Preview with Dashboard, Findings, Sensor
+Health, Activity, and Settings views. It supports one-click scans, automatic
+refresh, reviewed integrity baselines, local event history, and JSON report
+export.
+
+Build and open the development app:
+
+```sh
+./app/macos/build.sh
+open build/macos/RATtler.app
+```
+
+Create a portable ZIP download that bundles the detection engine and does
+not require Python on the destination Mac:
+
+```sh
+python3 -m pip install pyinstaller
+./app/macos/build.sh --portable --archive
+```
+
+Tagged releases publish separate Apple Silicon and Intel ZIPs on
+[GitHub Releases](https://github.com/VulneraDev/RATtler/releases). Download the
+archive and matching `.sha256` file for your Mac, verify the checksum, then move
+`RATtler.app` into Applications. The preview is ad-hoc signed but not
+Apple-notarized, so use Control-click → Open for its first launch. All UI data
+remains under
+`~/Library/Application Support/RATtler`; the interface loads no remote code. See
+[`app/macos/README.md`](app/macos/README.md) for packaging details.
+
 Create a known-good integrity baseline only after reviewing a clean scan, then
 include it in later scans:
 

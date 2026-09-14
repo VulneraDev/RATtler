@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; frame-src 'none'">
+  <title>RATtler</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <svg class="svg-sprite" aria-hidden="true">
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 2.8 20 6v5.8c0 5-3.2 8-8 9.8-4.8-1.8-8-4.8-8-9.8V6l8-3.2Z"/><path d="m8.7 12 2.1 2.1 4.7-5"/></symbol>
+    <symbol id="i-pulse" viewBox="0 0 24 24"><path d="M3 12h4l2-5 4 10 2.2-5H21"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.2 2"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.8-3L3 11"/><path d="M3 6v5h5M4 13a8 8 0 0 0 14.8 3L21 13"/><path d="M21 18v-5h-5"/></symbol>
+    <symbol id="i-export" viewBox="0 0 24 24"><path d="M12 15V3m0 0L8 7m4-4 4 4"/><path d="M5 12v7h14v-7"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2.8 20h18.4L12 3Z"/><path d="M12 9v5m0 3v.1"/></symbol>
+    <symbol id="i-coverage" viewBox="0 0 24 24"><path d="M4 18a10 10 0 0 1 16 0M7 14a6.5 6.5 0 0 1 10 0M10 10.5a3.5 3.5 0 0 1 4 0"/><circle cx="12" cy="19" r="1"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 2.6 2.6L16.5 9"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6h7l2 2h9v10H3V6Z"/></symbol>
+  </svg>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark"><span>R</span><i></i></div>
+        <div><strong>RATtler</strong><small>ENDPOINT WATCH</small></div>
+      </div>
+      <div class="nav-caption">MONITOR</div>
+      <nav>
+        <button class="nav-item active" data-view="dashboard"><span class="nav-icon"><svg><use href="#i-grid"></use></svg></span>Dashboard<i></i></button>
+        <button class="nav-item" data-view="findings"><span class="nav-icon"><svg><use href="#i-shield"></use></svg></span>Findings<i></i></button>
+        <button class="nav-item" data-view="sensors"><span class="nav-icon"><svg><use href="#i-pulse"></use></svg></span>Sensor Health<i></i></button>
+        <button class="nav-item" data-view="activity"><span class="nav-icon"><svg><use href="#i-clock"></use></svg></span>Activity<i></i></button>
+      </nav>
+      <div class="sidebar-spacer"></div>
+      <nav class="lower-nav">
+        <button class="nav-item" data-view="settings"><span class="nav-icon"><svg><use href="#i-sliders"></use></svg></span>Settings<i></i></button>
+      </nav>
+      <div class="sidebar-status">
+        <span id="sidebar-dot" class="status-dot unknown"></span>
+        <div><strong id="sidebar-label">Awaiting scan</strong><small>Community Preview <span id="app-version">0.7.0</span></small></div>
+      </div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div class="topbar-spacer"></div>
+        <span id="activity-message" class="activity-message">Starting RATtler…</span>
+        <button id="export-button" class="icon-button" title="Export report" disabled><svg><use href="#i-export"></use></svg></button>
+        <button id="scan-button" class="scan-button"><svg class="scan-glyph"><use href="#i-refresh"></use></svg><span>Scan now</span></button>
+      </header>
+
+      <div class="viewport">
+        <section id="dashboard" class="view active">
+          <div class="page-heading"><small>ENDPOINT OVERVIEW</small><h1>Dashboard</h1><p>A clear, local view of this Mac’s defensive posture.</p></div>
+          <div id="dashboard-content" class="loading-panel">
+            <div class="loading-shield"><span></span></div>
+            <h2>Scanning this Mac</h2>
+            <p>Checking protection, processes, persistence, listeners, and loaded code.</p>
+            <div class="loading-bar"><i></i></div>
+          </div>
+        </section>
+
+        <section id="findings" class="view">
+          <div class="page-heading"><small>INVESTIGATION QUEUE</small><h1>Findings</h1><p>Explainable indicators, prioritized by risk—not black-box verdicts.</p></div>
+          <div class="filterbar">
+            <select id="severity-filter" aria-label="Severity filter">
+              <option value="all">All severities</option><option value="critical">Critical</option>
+              <option value="high">High</option><option value="medium">Medium</option>
+              <option value="low">Low</option><option value="info">Info</option>
+            </select>
+            <input id="finding-search" type="search" placeholder="Search rule, title, or category">
+            <span id="finding-count">0 shown</span>
+          </div>
+          <div id="findings-list"></div>
+        </section>
+
+        <section id="sensors" class="view">
+          <div class="page-heading"><small>COVERAGE MAP</small><h1>Sensor health</h1><p>Know exactly which layers reported—and where visibility is incomplete.</p></div>
+          <div id="sensors-content"></div>
+        </section>
+
+        <section id="activity" class="view">
+          <div class="page-heading"><small>LOCAL TIMELINE</small><h1>Activity</h1><p>Recent endpoint changes and correlations retained on this Mac.</p></div>
+          <div id="activity-list"></div>
+        </section>
+
+        <section id="settings" class="view">
+          <div class="page-heading"><small>CONFIGURATION</small><h1>Settings</h1><p>Tune local monitoring without sending endpoint data anywhere.</p></div>
+          <div class="settings-stack">
+            <article class="panel settings-panel">
+              <h3>Monitoring</h3>
+              <div class="setting-row"><span class="setting-icon">↻</span><div><strong>Scan automatically</strong><p>Refresh endpoint posture every 60 seconds while RATtler is open.</p></div><label class="switch"><input id="auto-scan" type="checkbox"><span></span></label></div>
+              <div class="divider"></div>
+              <div class="setting-row"><span class="setting-icon">⌕</span><div><strong>Integrity baseline</strong><p id="baseline-description">Create this only after reviewing a clean endpoint scan.</p></div><button id="baseline-button" class="quiet-button">Create baseline</button></div>
+            </article>
+            <article class="panel settings-panel">
+              <h3>Privacy and storage</h3>
+              <div class="setting-row"><span class="setting-icon">▣</span><div><strong>Local evidence</strong><p>Reports, state, and the bounded event journal stay in Application Support.</p></div><button id="reveal-button" class="quiet-button">Show files</button></div>
+              <div class="divider"></div>
+              <div class="setting-row"><span class="setting-icon">⌁</span><div><strong>No cloud connection</strong><p>RATtler contains no telemetry upload or remote-control service.</p></div><span class="local-badge">LOCAL ONLY</span></div>
+            </article>
+            <div id="native-settings"></div>
+            <div class="notice warning"><span>△</span><div><strong>Community Preview</strong><p>RATtler provides indicators for investigation. It does not quarantine files, block execution, or replace a supported antivirus/EDR product.</p></div></div>
+          </div>
+        </section>
+      </div>
+
+      <div id="toast" class="toast"><span>△</span><div><strong>RATtler needs attention</strong><p></p></div><button>×</button></div>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

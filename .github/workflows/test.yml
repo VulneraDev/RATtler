@@ -23,3 +23,5 @@ jobs:
       - run: python -m unittest discover -s tests -v
       - if: runner.os == 'macOS'
         run: make -C native/macos
+      - if: runner.os == 'macOS' && matrix.python-version == '3.13'
+        run: ./app/macos/build.sh

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.0
+
+- Add a native macOS Community Preview application with a polished local UI
+- Add Dashboard, Findings, Sensor Health, Activity, and Settings views
+- Add one-click scanning, report export, automatic refresh, and baseline controls
+- Bundle the Python detector into portable Intel and Apple Silicon release builds
+- Add ad-hoc signed ZIP packaging with SHA-256 checksums
+- Add tag-driven GitHub preview releases and macOS app compilation in CI
+- Keep the interface local with a restrictive WebKit content-security policy
+
 ## 0.6.0
 
 - Add a notification-only native macOS Endpoint Security collector
