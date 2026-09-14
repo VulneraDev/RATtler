@@ -29,7 +29,9 @@ jobs:
           $code = $LASTEXITCODE
           $lines | ForEach-Object { Write-Output $_ }
           if ($code -ne 0) {
-            $detail = (($lines | Select-Object -Last 80) -join "`n")
+            $text = ($lines -join "`n")
+            $marker = $text.IndexOf('======================================================================')
+            $detail = if ($marker -ge 0) { $text.Substring($marker) } else { (($lines | Select-Object -Last 40) -join "`n") }
             $escaped = $detail.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
             Write-Output "::error title=Windows unit-test failure::$escaped"
             exit $code
