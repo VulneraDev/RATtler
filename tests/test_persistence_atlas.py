@@ -46,6 +46,7 @@ class PersistenceAtlasTests(unittest.TestCase):
         self.assertEqual(source["items"][0]["permission_count"], 1)
         self.assertEqual([item.rule_id for item in findings], ["RAT-PERSIST-107"])
 
+    @patch("rattler.persistence_atlas.os.name", "posix")
     def test_system_metadata_rules_are_deterministic(self):
         findings = _metadata_findings({
             "source": "periodic", "path": "/etc/periodic/review", "kind": "file",

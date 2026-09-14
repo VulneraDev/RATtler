@@ -116,12 +116,12 @@ def _metadata_findings(item: Dict[str, object], system_owned: bool) -> List[Find
         mode = int(str(item.get("mode")), 8)
     except ValueError:
         mode = 0
-    if item.get("symbolic_link") is not True and mode & (stat.S_IWGRP | stat.S_IWOTH):
+    if os.name == "posix" and item.get("symbolic_link") is not True and mode & (stat.S_IWGRP | stat.S_IWOTH):
         findings.append(Finding(
             "RAT-PERSIST-102", "Persistence asset is broadly writable", Severity.HIGH,
             "persistence", "Another local account or group can replace this persistence-related asset.", evidence,
         ))
-    if system_owned and item.get("uid") != 0:
+    if os.name == "posix" and system_owned and item.get("uid") != 0:
         findings.append(Finding(
             "RAT-PERSIST-103", "System persistence asset is not root-owned", Severity.MEDIUM,
             "persistence", "A system-level persistence location contains an item not owned by root.", evidence,
