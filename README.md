@@ -11,8 +11,8 @@ the computer unless you export a report yourself.
 
 Download **one ZIP**—not both:
 
-- [Mac with an Apple chip](https://github.com/VulneraDev/RATtler/releases/latest/download/RATtler-macOS-Apple-Silicon.zip)
-- [Mac with an Intel processor](https://github.com/VulneraDev/RATtler/releases/latest/download/RATtler-macOS-Intel.zip)
+- [Mac with an Apple chip](https://github.com/VulneraDev/RATtler/releases/download/v0.8.1/RATtler-macOS-Apple-Silicon.zip)
+- [Mac with an Intel processor](https://github.com/VulneraDev/RATtler/releases/download/v0.8.1/RATtler-macOS-Intel.zip)
 
 Not sure which Mac you have? Open **Apple menu → About This Mac**:
 
