@@ -12,6 +12,7 @@ from .bluepulse import evaluate_bluepulse
 from .events import update_events
 from .model import Assessment, BehaviorReport, Check, Status
 from .native_bridge import ingest_native_events
+from .operation import continuous_operation_sensor
 from .providers import select_provider
 from .ransomware import DEFAULT_MAX_FILES, scan_ransomware
 from .recovery import status as recovery_status
@@ -44,6 +45,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--journal-max-bytes", type=int, default=10485760, help="rotate journal above this size")
     parser.add_argument("--event-window", type=int, default=900, help="correlation window in seconds")
     parser.add_argument("--native-events", metavar="PATH", help="ingest native Endpoint Security JSONL")
+    parser.add_argument("--operation-state", metavar="PATH", help="verify native app scheduler heartbeat")
     parser.add_argument("--ransomware-state", metavar="PATH", help="persist anti-ransomware file-change state")
     parser.add_argument(
         "--ransomware-root", metavar="PATH", action="append", default=[],
@@ -154,6 +156,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     findings=behavior.findings + native_findings,
                     events=behavior.events + native_events,
                 )
+            if args.operation_state:
+                operation_check = continuous_operation_sensor(Path(args.operation_state))
+                behavior = BehaviorReport(
+                    sensors=behavior.sensors + [operation_check],
+                    findings=behavior.findings,
+                    events=behavior.events,
+                )
             if args.ransomware_state:
                 ransomware_roots = [Path(item) for item in args.ransomware_root] or [
                     Path.home() / "Desktop", Path.home() / "Documents", Path.home() / "Pictures",
@@ -204,6 +213,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 native_event_path=Path(args.native_events) if args.native_events else None,
                 ransomware_state_path=Path(args.ransomware_state) if args.ransomware_state else None,
                 recovery_store_path=Path(args.recovery_store) if args.recovery_store else None,
+                operation_state_path=Path(args.operation_state) if args.operation_state else None,
             )
             behavior = BehaviorReport(
                 sensors=behavior.sensors + [bluepulse],

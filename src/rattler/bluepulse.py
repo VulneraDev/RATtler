@@ -63,6 +63,7 @@ def evaluate_bluepulse(
     native_event_path: Optional[Path] = None,
     ransomware_state_path: Optional[Path] = None,
     recovery_store_path: Optional[Path] = None,
+    operation_state_path: Optional[Path] = None,
 ) -> Check:
     """Return an explainable confidence check for the current scan."""
     checks = [
@@ -92,6 +93,8 @@ def evaluate_bluepulse(
         ))
     if recovery_store_path is not None:
         artifacts.append(("recovery manifest", recovery_store_path / "manifest.json", True, False))
+    if operation_state_path is not None:
+        artifacts.append(("operation heartbeat", operation_state_path, True, False))
 
     artifact_issues = []
     artifacts_checked = 0
@@ -135,6 +138,8 @@ def evaluate_bluepulse(
     native = sensor_by_name.get("native_events")
     baseline = sensor_by_name.get("baseline")
     events = sensor_by_name.get("events")
+    operation = sensor_by_name.get("continuous_operation")
+    operation_status = operation.details.get("operation_status") if operation else None
     return Check(
         "bluepulse",
         pulse_status,
@@ -145,8 +150,12 @@ def evaluate_bluepulse(
             "operational": sum(check.status == Status.HEALTHY for check in checks),
             "monitored": len(checks),
             "coverage_gaps": gaps,
-            "monitoring_mode": "continuous snapshots" if events else "one-time snapshot",
+            "monitoring_mode": "paused" if operation_status == "paused" else
+            "continuous local scheduling" if operation else
+            "continuous snapshots" if events else "one-time snapshot",
             "event_continuity": events.status.value if events else "not configured",
+            "continuous_operation": operation.status.value if operation else "not configured",
+            "operation_status": operation_status or "not configured",
             "native_telemetry": native.status.value if native else "not configured",
             "native_dropped_events": dropped_events,
             "integrity_baseline": baseline.status.value if baseline else "not configured",

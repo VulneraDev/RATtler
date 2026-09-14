@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 import unittest
@@ -78,6 +79,23 @@ class BluePulseTests(unittest.TestCase):
             )
         self.assertEqual(pulse.status, Status.HEALTHY)
         self.assertEqual(pulse.details["artifacts_checked"], 2)
+
+    def test_operation_heartbeat_sets_continuous_monitoring_mode(self):
+        with tempfile.TemporaryDirectory() as directory:
+            operation = Path(directory) / "operation-state.json"
+            operation.write_text(json.dumps({"schema": 1}), encoding="utf-8")
+            if os.name != "nt":
+                operation.chmod(0o600)
+            sensors = SENSORS + [Check(
+                "continuous_operation", Status.HEALTHY, "native scan scheduler is active",
+                {"operation_status": "active"},
+            )]
+            pulse = evaluate_bluepulse(
+                PROTECTION, sensors, [], operation_state_path=operation,
+            )
+        self.assertEqual(pulse.status, Status.HEALTHY)
+        self.assertEqual(pulse.details["monitoring_mode"], "continuous local scheduling")
+        self.assertEqual(pulse.details["continuous_operation"], "healthy")
 
 
 if __name__ == "__main__":

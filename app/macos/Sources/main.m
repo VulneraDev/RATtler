@@ -1,15 +1,26 @@
 #import <AppKit/AppKit.h>
+#import <ServiceManagement/ServiceManagement.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
+#import <UserNotifications/UserNotifications.h>
 #import <WebKit/WebKit.h>
 #import <sys/stat.h>
 #import <unistd.h>
 
-@interface RATAppDelegate : NSObject <NSApplicationDelegate, WKScriptMessageHandler, WKNavigationDelegate>
+@interface RATAppDelegate : NSObject <NSApplicationDelegate, WKScriptMessageHandler, WKNavigationDelegate, UNUserNotificationCenterDelegate>
 @property(nonatomic, strong) NSWindow *window;
 @property(nonatomic, strong) WKWebView *webView;
 @property(nonatomic, strong) NSData *lastReport;
 @property(nonatomic, copy) NSString *lastFileScanPath;
 @property(nonatomic, assign) BOOL scanning;
+@property(nonatomic, assign) BOOL monitoringPaused;
+@property(nonatomic, assign) BOOL notificationsEnabled;
+@property(nonatomic, strong) NSDate *lastScanDate;
+@property(nonatomic, copy) NSString *lastNotificationKey;
+@property(nonatomic, strong) NSStatusItem *statusItem;
+@property(nonatomic, strong) NSMenuItem *pauseMenuItem;
+@property(nonatomic, strong) NSMenuItem *loginMenuItem;
+@property(nonatomic, strong) NSMenuItem *notificationMenuItem;
+@property(nonatomic, strong) NSTimer *scanTimer;
 - (NSString *)responseErrorFromResult:(NSDictionary *)result fallback:(NSString *)fallback;
 - (BOOL)isValidSHA256:(NSString *)digest;
 - (BOOL)isValidCDHash:(NSString *)digest;
@@ -23,12 +34,34 @@
 - (void)selectFileScan;
 - (void)startFileScanPath:(NSString *)path;
 - (void)runDetectionLab;
+- (void)setupStatusItem;
+- (void)scheduledScan:(NSTimer *)timer;
+- (void)applyMonitoringPaused:(BOOL)paused;
+- (void)writeOperationState;
+- (void)loadLastReport;
+- (void)persistLastReport;
+- (void)setLaunchAtLogin:(BOOL)enabled;
+- (void)setNotifications:(BOOL)enabled;
+- (void)showMainWindow:(id)sender;
+- (void)notifyForReport:(NSDictionary *)report;
+- (void)updateStatusItem;
+- (BOOL)launchAtLoginEnabled;
+- (NSString *)launchAtLoginStatus;
+- (NSURL *)operationStateURL;
+- (NSURL *)lastReportURL;
+- (void)reconcileNotificationAuthorization;
 @end
 
 @implementation RATAppDelegate
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
     (void)notification;
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    self.monitoringPaused = [defaults boolForKey:@"RATMonitoringPaused"];
+    self.notificationsEnabled = [defaults boolForKey:@"RATNotificationsEnabled"];
+    self.lastNotificationKey = [defaults stringForKey:@"RATLastNotificationKey"];
+    [UNUserNotificationCenter currentNotificationCenter].delegate = self;
+    [self loadLastReport];
     WKUserContentController *messages = [[WKUserContentController alloc] init];
     [messages addScriptMessageHandler:self name:@"rattler"];
 
@@ -59,6 +92,16 @@
     [self.window center];
     [self.window makeKeyAndOrderFront:nil];
 
+    [self setupStatusItem];
+    [self reconcileNotificationAuthorization];
+    self.scanTimer = [NSTimer timerWithTimeInterval:60.0
+                                             target:self
+                                           selector:@selector(scheduledScan:)
+                                           userInfo:nil
+                                            repeats:YES];
+    [[NSRunLoop mainRunLoop] addTimer:self.scanTimer forMode:NSRunLoopCommonModes];
+    [self writeOperationState];
+
     NSURL *page = [[NSBundle mainBundle] URLForResource:@"index" withExtension:@"html" subdirectory:@"Web"];
     NSURL *directory = [page URLByDeletingLastPathComponent];
     if (page != nil) {
@@ -71,7 +114,18 @@
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender {
     (void)sender;
+    return NO;
+}
+
+- (BOOL)applicationShouldHandleReopen:(NSApplication *)sender hasVisibleWindows:(BOOL)flag {
+    (void)sender;
+    if (!flag) [self showMainWindow:nil];
     return YES;
+}
+
+- (void)applicationWillTerminate:(NSNotification *)notification {
+    (void)notification;
+    [self.scanTimer invalidate];
 }
 
 - (BOOL)applicationSupportsSecureRestorableState:(NSApplication *)application {
@@ -79,11 +133,202 @@
     return YES;
 }
 
+- (void)setupStatusItem {
+    self.statusItem = [[NSStatusBar systemStatusBar] statusItemWithLength:NSVariableStatusItemLength];
+    self.statusItem.button.title = @"R";
+    self.statusItem.button.toolTip = @"RATtler continuous endpoint monitoring";
+
+    NSMenu *menu = [[NSMenu alloc] initWithTitle:@"RATtler"];
+    [menu addItemWithTitle:@"Show RATtler" action:@selector(showMainWindow:) keyEquivalent:@""];
+    [menu addItemWithTitle:@"Scan Now" action:@selector(scanFromMenu:) keyEquivalent:@""];
+    [menu addItem:[NSMenuItem separatorItem]];
+    self.pauseMenuItem = [menu addItemWithTitle:@"Pause Monitoring"
+                                         action:@selector(toggleMonitoringFromMenu:)
+                                  keyEquivalent:@""];
+    self.loginMenuItem = [menu addItemWithTitle:@"Start at Login"
+                                         action:@selector(toggleLaunchAtLoginFromMenu:)
+                                  keyEquivalent:@""];
+    self.notificationMenuItem = [menu addItemWithTitle:@"Enable Finding Notifications"
+                                                action:@selector(toggleNotificationsFromMenu:)
+                                         keyEquivalent:@""];
+    [menu addItem:[NSMenuItem separatorItem]];
+    [menu addItemWithTitle:@"Quit RATtler" action:@selector(quitFromMenu:) keyEquivalent:@"q"];
+    for (NSMenuItem *item in menu.itemArray) item.target = self;
+    self.statusItem.menu = menu;
+    [self updateStatusItem];
+}
+
+- (void)updateStatusItem {
+    self.pauseMenuItem.title = self.monitoringPaused ? @"Resume Monitoring" : @"Pause Monitoring";
+    self.loginMenuItem.title = [self launchAtLoginEnabled] ? @"Stop Starting at Login" : @"Start at Login";
+    self.notificationMenuItem.title = self.notificationsEnabled
+        ? @"Disable Finding Notifications" : @"Enable Finding Notifications";
+    self.statusItem.button.toolTip = self.monitoringPaused
+        ? @"RATtler monitoring is paused" : @"RATtler continuous endpoint monitoring is active";
+}
+
+- (void)showMainWindow:(id)sender {
+    (void)sender;
+    [self.window makeKeyAndOrderFront:nil];
+    [NSApp activateIgnoringOtherApps:YES];
+}
+
+- (void)scanFromMenu:(id)sender {
+    (void)sender;
+    [self startScan];
+}
+
+- (void)toggleMonitoringFromMenu:(id)sender {
+    (void)sender;
+    [self applyMonitoringPaused:!self.monitoringPaused];
+}
+
+- (void)toggleLaunchAtLoginFromMenu:(id)sender {
+    (void)sender;
+    [self setLaunchAtLogin:![self launchAtLoginEnabled]];
+}
+
+- (void)toggleNotificationsFromMenu:(id)sender {
+    (void)sender;
+    [self setNotifications:!self.notificationsEnabled];
+}
+
+- (void)quitFromMenu:(id)sender {
+    (void)sender;
+    [NSApp terminate:nil];
+}
+
+- (void)scheduledScan:(NSTimer *)timer {
+    (void)timer;
+    [self writeOperationState];
+    if (!self.monitoringPaused) [self startScan];
+}
+
+- (void)applyMonitoringPaused:(BOOL)paused {
+    self.monitoringPaused = paused;
+    [[NSUserDefaults standardUserDefaults] setBool:paused forKey:@"RATMonitoringPaused"];
+    [self updateStatusItem];
+    [self writeOperationState];
+    [self sendCapabilities];
+    [self sendObject:@{
+        @"success": @YES,
+        @"message": paused ? @"Continuous monitoring paused. Manual scans still work."
+                           : @"Continuous monitoring resumed.",
+    } function:@"receiveResponse"];
+    [self sendObject:@{
+        @"phase": @"ready",
+        @"message": paused ? @"Continuous monitoring is paused" : @"Continuous monitoring is active",
+    } function:@"receiveState"];
+    if (!paused) [self startScan];
+}
+
+- (BOOL)launchAtLoginEnabled {
+    return [SMAppService mainAppService].status == SMAppServiceStatusEnabled;
+}
+
+- (NSString *)launchAtLoginStatus {
+    switch ([SMAppService mainAppService].status) {
+        case SMAppServiceStatusEnabled: return @"enabled";
+        case SMAppServiceStatusRequiresApproval: return @"approval required";
+        case SMAppServiceStatusNotFound: return @"unavailable";
+        case SMAppServiceStatusNotRegistered: return @"not registered";
+    }
+    return @"unknown";
+}
+
+- (void)setLaunchAtLogin:(BOOL)enabled {
+    NSError *error = nil;
+    SMAppService *service = [SMAppService mainAppService];
+    BOOL changed = enabled ? [service registerAndReturnError:&error]
+                           : [service unregisterAndReturnError:&error];
+    [self updateStatusItem];
+    [self writeOperationState];
+    [self sendCapabilities];
+    NSString *message = nil;
+    BOOL effective = enabled ? service.status == SMAppServiceStatusEnabled
+                             : service.status == SMAppServiceStatusNotRegistered;
+    if (service.status == SMAppServiceStatusRequiresApproval) {
+        message = @"Approve RATtler in System Settings → General → Login Items.";
+    } else if (changed && effective) {
+        message = enabled ? @"RATtler will start when you sign in."
+                          : @"RATtler will no longer start when you sign in.";
+    } else {
+        message = error.localizedDescription ?: @"The login-item setting could not be changed.";
+    }
+    [self sendObject:@{@"success": @(changed && effective), @"message": message} function:@"receiveResponse"];
+}
+
+- (void)setNotifications:(BOOL)enabled {
+    if (!enabled) {
+        self.notificationsEnabled = NO;
+        [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"RATNotificationsEnabled"];
+        [self updateStatusItem];
+        [self sendCapabilities];
+        [self sendObject:@{@"success": @YES, @"message": @"Local finding notifications disabled."}
+                function:@"receiveResponse"];
+        return;
+    }
+    UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
+    [center requestAuthorizationWithOptions:(UNAuthorizationOptionAlert | UNAuthorizationOptionSound)
+                          completionHandler:^(BOOL granted, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.notificationsEnabled = granted;
+            [[NSUserDefaults standardUserDefaults] setBool:granted forKey:@"RATNotificationsEnabled"];
+            [self updateStatusItem];
+            [self sendCapabilities];
+            NSString *message = granted ? @"Local notifications enabled for new high-priority findings."
+                : (error.localizedDescription ?: @"Notification permission was not granted.");
+            [self sendObject:@{@"success": @(granted), @"message": message} function:@"receiveResponse"];
+        });
+    }];
+}
+
+- (void)reconcileNotificationAuthorization {
+    if (!self.notificationsEnabled) return;
+    [[UNUserNotificationCenter currentNotificationCenter]
+        getNotificationSettingsWithCompletionHandler:^(UNNotificationSettings *settings) {
+        BOOL authorized = settings.authorizationStatus == UNAuthorizationStatusAuthorized ||
+                          settings.authorizationStatus == UNAuthorizationStatusProvisional;
+        if (authorized) return;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.notificationsEnabled = NO;
+            [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"RATNotificationsEnabled"];
+            [self updateStatusItem];
+            [self sendCapabilities];
+        });
+    }];
+}
+
+- (void)userNotificationCenter:(UNUserNotificationCenter *)center
+       willPresentNotification:(UNNotification *)notification
+         withCompletionHandler:(void (^)(UNNotificationPresentationOptions options))completionHandler {
+    (void)center;
+    (void)notification;
+    completionHandler(UNNotificationPresentationOptionBanner | UNNotificationPresentationOptionSound);
+}
+
+- (void)userNotificationCenter:(UNUserNotificationCenter *)center
+didReceiveNotificationResponse:(UNNotificationResponse *)response
+         withCompletionHandler:(void (^)(void))completionHandler {
+    (void)center;
+    (void)response;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self showMainWindow:nil];
+        completionHandler();
+    });
+}
+
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
     (void)webView;
     (void)navigation;
     [self sendCapabilities];
-    [self startScan];
+    if (self.lastReport.length > 0) [self sendData:self.lastReport function:@"receiveReport"];
+    if (self.monitoringPaused) {
+        [self sendObject:@{@"phase": @"ready", @"message": @"Continuous monitoring is paused"}
+                function:@"receiveState"];
+    } else {
+        [self startScan];
+    }
 }
 
 - (void)webView:(WKWebView *)webView
@@ -108,6 +353,12 @@
     NSString *action = ((NSDictionary *)message.body)[@"action"];
     if ([action isEqualToString:@"scan"]) {
         [self startScan];
+    } else if ([action isEqualToString:@"setMonitoringPaused"]) {
+        [self applyMonitoringPaused:[((NSDictionary *)message.body)[@"paused"] boolValue]];
+    } else if ([action isEqualToString:@"setLaunchAtLogin"]) {
+        [self setLaunchAtLogin:[((NSDictionary *)message.body)[@"enabled"] boolValue]];
+    } else if ([action isEqualToString:@"setNotifications"]) {
+        [self setNotifications:[((NSDictionary *)message.body)[@"enabled"] boolValue]];
     } else if ([action isEqualToString:@"baseline"]) {
         [self createBaseline];
     } else if ([action isEqualToString:@"export"]) {
@@ -209,6 +460,95 @@
     return directory;
 }
 
+- (NSURL *)operationStateURL {
+    return [[self applicationDataDirectory] URLByAppendingPathComponent:@"operation-state.json"];
+}
+
+- (NSURL *)lastReportURL {
+    return [[self applicationDataDirectory] URLByAppendingPathComponent:@"last-report.json"];
+}
+
+- (void)writeOperationState {
+    NSISO8601DateFormatter *formatter = [[NSISO8601DateFormatter alloc] init];
+    formatter.formatOptions = NSISO8601DateFormatWithInternetDateTime | NSISO8601DateFormatWithFractionalSeconds;
+    NSDictionary *state = @{
+        @"schema": @1,
+        @"status": self.monitoringPaused ? @"paused" : @"active",
+        @"pid": @(getpid()),
+        @"interval_seconds": @60,
+        @"updated_at": [formatter stringFromDate:[NSDate date]],
+        @"last_scan_at": self.lastScanDate ? [formatter stringFromDate:self.lastScanDate] : [NSNull null],
+        @"menu_bar": @YES,
+        @"launch_at_login": @([self launchAtLoginEnabled]),
+    };
+    NSData *data = [NSJSONSerialization dataWithJSONObject:state options:0 error:nil];
+    NSURL *destination = [self operationStateURL];
+    if ([data writeToURL:destination options:NSDataWritingAtomic error:nil]) {
+        chmod(destination.fileSystemRepresentation, 0600);
+    }
+}
+
+- (void)loadLastReport {
+    NSURL *source = [self lastReportURL];
+    struct stat metadata;
+    if (lstat(source.fileSystemRepresentation, &metadata) != 0 || !S_ISREG(metadata.st_mode) ||
+        S_ISLNK(metadata.st_mode) || metadata.st_size <= 0 || metadata.st_size > 10 * 1024 * 1024) return;
+    NSData *data = [NSData dataWithContentsOfURL:source options:NSDataReadingMappedIfSafe error:nil];
+    NSDictionary *report = data.length
+        ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+    if (![report isKindOfClass:[NSDictionary class]] || ![report[@"behavior"] isKindOfClass:[NSDictionary class]]) return;
+    self.lastReport = data;
+    NSString *observed = [report[@"observed_at"] isKindOfClass:[NSString class]] ? report[@"observed_at"] : nil;
+    if (observed.length > 0) {
+        NSISO8601DateFormatter *formatter = [[NSISO8601DateFormatter alloc] init];
+        self.lastScanDate = [formatter dateFromString:observed];
+    }
+}
+
+- (void)persistLastReport {
+    if (self.lastReport.length == 0 || self.lastReport.length > 10 * 1024 * 1024) return;
+    NSURL *destination = [self lastReportURL];
+    if ([self.lastReport writeToURL:destination options:NSDataWritingAtomic error:nil]) {
+        chmod(destination.fileSystemRepresentation, 0600);
+    }
+}
+
+- (void)notifyForReport:(NSDictionary *)report {
+    if (!self.notificationsEnabled) return;
+    NSDictionary *behavior = [report[@"behavior"] isKindOfClass:[NSDictionary class]] ? report[@"behavior"] : nil;
+    NSArray *findings = [behavior[@"findings"] isKindOfClass:[NSArray class]] ? behavior[@"findings"] : @[];
+    NSMutableArray<NSString *> *identifiers = [NSMutableArray array];
+    for (id item in findings) {
+        if (![item isKindOfClass:[NSDictionary class]]) continue;
+        NSString *severity = [item[@"severity"] isKindOfClass:[NSString class]] ? item[@"severity"] : @"";
+        if (![@[@"critical", @"high"] containsObject:severity]) continue;
+        NSString *ruleID = [item[@"rule_id"] isKindOfClass:[NSString class]] ? item[@"rule_id"] : @"unknown";
+        [identifiers addObject:ruleID];
+    }
+    if (identifiers.count == 0) {
+        self.lastNotificationKey = nil;
+        [[NSUserDefaults standardUserDefaults] removeObjectForKey:@"RATLastNotificationKey"];
+        return;
+    }
+    [identifiers sortUsingSelector:@selector(compare:)];
+    NSString *key = [identifiers componentsJoinedByString:@"|"];
+    if ([key isEqualToString:self.lastNotificationKey]) return;
+    self.lastNotificationKey = key;
+    [[NSUserDefaults standardUserDefaults] setObject:key forKey:@"RATLastNotificationKey"];
+
+    UNMutableNotificationContent *content = [[UNMutableNotificationContent alloc] init];
+    content.title = @"RATtler found activity to review";
+    content.body = [NSString stringWithFormat:@"%lu high-priority finding%@. Open RATtler for the evidence.",
+        (unsigned long)identifiers.count, identifiers.count == 1 ? @"" : @"s"];
+    content.sound = [UNNotificationSound defaultSound];
+    UNNotificationRequest *request = [UNNotificationRequest
+        requestWithIdentifier:[NSUUID UUID].UUIDString content:content trigger:nil];
+    [[UNUserNotificationCenter currentNotificationCenter] addNotificationRequest:request
+                                                            withCompletionHandler:^(NSError *error) {
+        if (error != nil) NSLog(@"RATtler notification error: %@", error.localizedDescription);
+    }];
+}
+
 - (NSArray<NSString *> *)scanArguments {
     NSURL *directory = [self applicationDataDirectory];
     NSURL *state = [directory URLByAppendingPathComponent:@"state.json"];
@@ -217,10 +557,12 @@
     NSURL *nativeEvents = [directory URLByAppendingPathComponent:@"native-events.jsonl"];
     NSURL *ransomwareState = [directory URLByAppendingPathComponent:@"ransomware-state.json"];
     NSURL *exceptions = [directory URLByAppendingPathComponent:@"exceptions.json"];
+    NSURL *operationState = [self operationStateURL];
     NSString *home = NSHomeDirectory();
     NSMutableArray<NSString *> *arguments = [NSMutableArray arrayWithArray:@[
         @"--state", state.path, @"--journal", journal.path,
         @"--ransomware-state", ransomwareState.path,
+        @"--operation-state", operationState.path,
         @"--exceptions", exceptions.path,
         @"--ransomware-root", [home stringByAppendingPathComponent:@"Desktop"],
         @"--ransomware-root", [home stringByAppendingPathComponent:@"Documents"],
@@ -294,6 +636,7 @@
 - (void)startScan {
     if (self.scanning) return;
     self.scanning = YES;
+    [self writeOperationState];
     [self sendObject:@{@"phase": @"scanning", @"message": @"Inspecting this Mac…"}
             function:@"receiveState"];
     NSArray<NSString *> *arguments = [self scanArguments];
@@ -319,7 +662,10 @@
             id report = output.length ? [NSJSONSerialization JSONObjectWithData:output options:0 error:&jsonError] : nil;
             if ([report isKindOfClass:[NSDictionary class]]) {
                 self.lastReport = output;
+                self.lastScanDate = [NSDate date];
+                [self persistLastReport];
                 [self freezeRecoveryForReport:(NSDictionary *)report];
+                [self notifyForReport:(NSDictionary *)report];
                 [self sendData:output function:@"receiveReport"];
                 [self sendObject:@{@"phase": @"ready", @"message": @"Scan completed"}
                         function:@"receiveState"];
@@ -329,6 +675,7 @@
                 [self sendObject:@{@"phase": @"error", @"message": detail}
                         function:@"receiveState"];
             }
+            [self writeOperationState];
             [self sendCapabilities];
         });
     });
@@ -1000,7 +1347,13 @@
         @"recoveryError": @([[NSFileManager defaultManager] fileExistsAtPath:[self recoveryErrorURL].path]),
         @"installed": @(installed),
         @"appPath": appPath ?: @"",
-        @"version": @"0.15.0",
+        @"monitoringPaused": @(self.monitoringPaused),
+        @"backgroundInterval": @60,
+        @"menuBar": @YES,
+        @"launchAtLogin": @([self launchAtLoginEnabled]),
+        @"launchAtLoginStatus": [self launchAtLoginStatus],
+        @"notificationsEnabled": @(self.notificationsEnabled),
+        @"version": @"0.16.0",
     }
             function:@"receiveCapabilities"];
 }

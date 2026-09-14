@@ -14,8 +14,8 @@ class MacOSAppSourceTests(unittest.TestCase):
         with (APP / "Info.plist").open("rb") as handle:
             info = plistlib.load(handle)
         self.assertEqual(info["CFBundleIdentifier"], "dev.vulnera.rattler")
-        self.assertEqual(info["CFBundleShortVersionString"], "0.15.0")
-        self.assertEqual(info["CFBundleVersion"], "19")
+        self.assertEqual(info["CFBundleShortVersionString"], "0.16.0")
+        self.assertEqual(info["CFBundleVersion"], "20")
         self.assertEqual(info["LSMinimumSystemVersion"], "13.0")
         self.assertTrue(info["LSMultipleInstancesProhibited"])
 
@@ -61,7 +61,27 @@ class MacOSAppSourceTests(unittest.TestCase):
         self.assertIn('@"--ransomware-state", ransomwareState.path', host)
         for folder in ("Desktop", "Documents", "Pictures"):
             self.assertIn('@"%s"' % folder, host)
-        self.assertIn('storedAuto===null?true', script)
+        self.assertIn('NSTimer timerWithTimeInterval:60.0', host)
+        self.assertNotIn('setInterval(()=>native("scan")', script)
+
+    def test_continuous_operation_is_native_verifiable_and_user_controlled(self):
+        host = (APP / "Sources/main.m").read_text(encoding="utf-8")
+        script = (APP / "Resources/Web/app.js").read_text(encoding="utf-8")
+        build = (APP / "build.sh").read_text(encoding="utf-8")
+        self.assertIn("NSStatusBar systemStatusBar", host)
+        self.assertIn("return NO;", host)
+        self.assertIn('@"--operation-state", operationState.path', host)
+        self.assertIn('@"interval_seconds": @60', host)
+        self.assertIn("chmod(destination.fileSystemRepresentation, 0600)", host)
+        self.assertIn("SMAppService mainAppService", host)
+        self.assertIn("UNUserNotificationCenter", host)
+        self.assertIn("UNNotificationPresentationOptionBanner", host)
+        self.assertIn('native("setMonitoringPaused"', script)
+        self.assertIn('native("setLaunchAtLogin"', script)
+        self.assertIn('native("setNotifications"', script)
+        self.assertIn("background_monitoring", script)
+        self.assertIn("-framework ServiceManagement", build)
+        self.assertIn("-framework UserNotifications", build)
 
     def test_app_applies_only_reviewed_identity_bound_exceptions(self):
         host = (APP / "Sources/main.m").read_text(encoding="utf-8")
@@ -121,8 +141,8 @@ class MacOSAppSourceTests(unittest.TestCase):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         build = (APP / "build.sh").read_text(encoding="utf-8")
         self.assertIn("Download **one ZIP**", readme)
-        self.assertIn("releases/download/v0.15.0/RATtler-macOS-Apple-Silicon.zip", readme)
-        self.assertIn("releases/download/v0.15.0/RATtler-macOS-Intel.zip", readme)
+        self.assertIn("releases/download/v0.16.0/RATtler-macOS-Apple-Silicon.zip", readme)
+        self.assertIn("releases/download/v0.16.0/RATtler-macOS-Intel.zip", readme)
         self.assertIn("System Settings → Privacy & Security", readme)
         self.assertIn("Open Anyway", readme)
         self.assertIn('release_architecture="Apple-Silicon"', build)
@@ -140,6 +160,7 @@ class MacOSAppSourceTests(unittest.TestCase):
             "healthy": "healthy", "risk": "risk", "bluepulse": "healthy",
             "ransomware": "healthy", "deep-scan": "file-scan", "detection-lab": "lab",
             "persistence": "persistence",
+            "continuous": "healthy",
         }
         for state, fixture in fixtures.items():
             relative = "docs/images/rattler-%s.png" % state

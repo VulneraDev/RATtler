@@ -29,7 +29,8 @@ architecture=$(uname -m)
 xcrun --sdk macosx clang \
     -fobjc-arc -Wall -Wextra -Werror \
     -mmacosx-version-min=13.0 -isysroot "$sdk_path" \
-    -framework AppKit -framework UniformTypeIdentifiers -framework WebKit \
+    -framework AppKit -framework ServiceManagement -framework UniformTypeIdentifiers \
+    -framework UserNotifications -framework WebKit \
     "$script_dir/Sources/main.m" \
     -o "$app_bundle/Contents/MacOS/RATtler"
 

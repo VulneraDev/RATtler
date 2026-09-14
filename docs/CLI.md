@@ -94,10 +94,21 @@ Every scan includes a `bluepulse` sensor result. It reports high, reduced, or
 low confidence in the sensors available to that scan. Threat findings and
 confidence remain separate: high confidence does not mean the endpoint is clean.
 
-With `--state`, `--journal`, `--baseline`, or `--native-events`, BluePulse also
-checks the corresponding local artifacts. Private state must remain owned by the
-current user and inaccessible to group or other users. A native event stream may
-be readable by a dedicated group, but it must not be group- or world-writable.
+With `--state`, `--journal`, `--baseline`, `--native-events`, or
+`--operation-state`, BluePulse also checks the corresponding local artifacts.
+Private state must remain owned by the current user and inaccessible to group or
+other users. A native event stream may be readable by a dedicated group, but it
+must not be group- or world-writable.
+
+The macOS app supplies `--operation-state` automatically. For a developer scan:
+
+```sh
+rattler --operation-state "$HOME/Library/Application Support/RATtler/operation-state.json" --pretty
+```
+
+The bounded assurance sensor validates schema, permissions, ownership,
+heartbeat freshness, scheduling interval, pause state, and whether the native
+host PID is still alive. It is read-only and does not start or control the app.
 
 Native collection is considered stale after 45 seconds without a heartbeat or
 event. The collector emits a heartbeat every 15 seconds. Heartbeats are consumed

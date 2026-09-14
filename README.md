@@ -11,8 +11,8 @@ the computer unless you export a report yourself.
 
 Download **one ZIP**—not both:
 
-- [Mac with an Apple chip](https://github.com/VulneraDev/RATtler/releases/download/v0.15.0/RATtler-macOS-Apple-Silicon.zip)
-- [Mac with an Intel processor](https://github.com/VulneraDev/RATtler/releases/download/v0.15.0/RATtler-macOS-Intel.zip)
+- [Mac with an Apple chip](https://github.com/VulneraDev/RATtler/releases/download/v0.16.0/RATtler-macOS-Apple-Silicon.zip)
+- [Mac with an Intel processor](https://github.com/VulneraDev/RATtler/releases/download/v0.16.0/RATtler-macOS-Intel.zip)
 
 Not sure which Mac you have? Open **Apple menu → About This Mac**:
 
@@ -48,6 +48,27 @@ RATtler scans automatically when it opens. You can also click **Scan now**.
 If RATtler says it is running from Downloads, close it, drag it into
 **Applications**, and reopen it there. RATtler excludes its exact app and
 scan-engine process IDs so it does not flag itself.
+
+## Keep RATtler running
+
+RATtler now has a native menu-bar controller. Closing its window leaves the
+local scheduler running; click the **R** in the menu bar to reopen RATtler,
+scan immediately, pause or resume monitoring, or quit completely.
+
+Open **Settings → Monitoring** to:
+
+- pause scheduled scans without disabling manual scans;
+- start RATtler automatically when you sign in; and
+- opt in to local notifications for new critical or high-priority findings.
+
+Notifications show only a finding count and never include file paths. BluePulse
+verifies the native controller's private heartbeat, process state, interval,
+and last scan instead of treating a UI switch as proof of protection.
+
+![RATtler continuous monitoring settings](docs/images/rattler-continuous.png)
+
+See the [continuous-operation guide](docs/CONTINUOUS_OPERATION.md) for exact
+behavior, privacy boundaries, and troubleshooting.
 
 ## Deep Scan
 
@@ -114,10 +135,11 @@ a real threat with high confidence, or no threat while warning that visibility
 is incomplete.
 
 It checks whether available protection and behavioral sensors replied, whether
-the report is fresh, whether event state is continuous, whether local monitoring
-files have safe permissions, and whether native telemetry reported a heartbeat
-or dropped events. Optional native telemetry and integrity baselines are clearly
-labeled when they are not configured; their absence is not presented as failure.
+the report is fresh, whether the native scan scheduler is alive or paused,
+whether local monitoring files have safe permissions, and whether native
+telemetry reported a heartbeat or dropped events. Optional native telemetry and
+integrity baselines are clearly labeled when they are not configured; their
+absence is not presented as failure.
 
 ![RATtler BluePulse detection confidence](docs/images/rattler-bluepulse.png)
 
@@ -128,8 +150,9 @@ for changes commonly associated with encryption attacks. It detects bursts of
 file rewrites, encryption-style extension replacements, possible ransom-note
 filenames, mass deletion, and modification of a harmless local canary.
 
-Monitoring is local, bounded to 25,000 files, and runs on each scan while
-RATtler is open. RATtler does not read or upload protected-file contents. This
+Monitoring is local, bounded to 25,000 files, and runs on each scheduled scan
+while RATtler is running, including when its window is closed. RATtler does not
+read or upload protected-file contents. This
 release detects and explains suspicious changes. Kernel-mediated write blocking
 still requires Apple's restricted Endpoint Security entitlement.
 
@@ -182,6 +205,8 @@ Risk detected:
 - Opt-in, quota-limited, content-addressed recovery copies with automatic freeze
   on ransomware evidence
 - BluePulse sensor confidence, scan freshness, state permissions, and event loss
+- Native menu-bar scheduling, explicit pause state, and a private operation
+  heartbeat that verifies the host PID and scan interval
 - Gatekeeper and XProtect health on macOS
 - Microsoft Defender health on Windows
 - ClamAV availability on Linux and other Unix systems
@@ -216,6 +241,8 @@ of the future signed system-extension milestone.
 
 - No account is required.
 - The app contains no telemetry upload or remote-control service.
+- Finding notifications are off by default, require macOS permission, and never
+  include endpoint paths.
 - Reports and response history stay in
   `~/Library/Application Support/RATtler`.
 - Local reports may contain executable paths, signing identifiers, Team IDs,
@@ -239,7 +266,8 @@ of the future signed system-extension milestone.
 To update, quit RATtler, download the newest ZIP, and replace the old app in
 Applications.
 
-To remove it, quit RATtler and drag it from Applications to Trash. Its local
+To remove it, turn off **Start at login** in Settings, quit RATtler from its
+menu-bar menu, and drag it from Applications to Trash. Its local
 history remains in `~/Library/Application Support/RATtler`; delete that folder
 only if you also want to remove reports, baselines, and quarantined files.
 

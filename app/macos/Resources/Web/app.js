@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const state = { report: null, fileScan: null, detectionLab: null, quarantine: [], exceptions: [], capabilities: { baseline: false, nativeEvents: false, yaraRules: false, detectionLab: false, recovery: false, recoveryFrozen: false, recoveryError: false, installed: true, appPath: "", version: "0.15.0" }, phase: "starting", autoTimer: null };
+  const state = { report: null, fileScan: null, detectionLab: null, quarantine: [], exceptions: [], capabilities: { baseline: false, nativeEvents: false, yaraRules: false, detectionLab: false, recovery: false, recoveryFrozen: false, recoveryError: false, installed: true, appPath: "", monitoringPaused: false, backgroundInterval: 60, menuBar: true, launchAtLogin: false, launchAtLoginStatus: "not registered", notificationsEnabled: false, version: "0.16.0" }, phase: "starting" };
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const esc = value => String(value ?? "—").replace(/[&<>'"]/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[char]));
@@ -26,6 +26,7 @@
   const pulseCheck = behavior => (behavior?.sensors || []).find(item => item.name === "bluepulse");
   const ransomwareCheck = behavior => (behavior?.sensors || []).find(item => item.name === "ransomware");
   const persistenceCheck = behavior => (behavior?.sensors || []).find(item => item.name === "persistence_atlas");
+  const operationCheck = behavior => (behavior?.sensors || []).find(item => item.name === "continuous_operation");
   const scanFreshness = report => {
     if (document.documentElement.classList.contains("snapshot")) return { fresh:true, age:0 };
     const observed = Date.parse(report?.observed_at || "");
@@ -245,18 +246,23 @@
     const pulse = pulseCheck(behavior) || { status:"unknown", message:"BluePulse data unavailable", details:{} };
     const details = pulse.details || {}, freshness = scanFreshness(state.report);
     const installed = state.capabilities.installed !== false;
+    const paused = state.capabilities.monitoringPaused === true;
+    const operation = operationCheck(behavior);
     const decisiveStatus = ["unhealthy","unknown"].includes(pulse.status);
-    const effectiveStatus = decisiveStatus ? pulse.status : !freshness.fresh || !installed ? "degraded" : pulse.status;
-    const confidence = decisiveStatus ? details.confidence || "low" : !freshness.fresh || !installed ? "reduced" : details.confidence || "low";
+    const effectiveStatus = decisiveStatus ? pulse.status : paused || !freshness.fresh || !installed ? "degraded" : pulse.status;
+    const confidence = decisiveStatus ? details.confidence || "low" : paused || !freshness.fresh || !installed ? "reduced" : details.confidence || "low";
     const headline = {healthy:"Sensors are reporting normally",degraded:"Detection confidence needs attention",unknown:"Detection confidence is incomplete",unhealthy:"A defensive layer is unhealthy"}[effectiveStatus] || "Detection confidence is incomplete";
     const explanation = effectiveStatus === "healthy" ? "BluePulse verified the available layers, event continuity, and local monitoring state behind this scan." : "Review the signals below before relying on a clean endpoint result.";
     const eventState = details.event_continuity || "not configured";
     const nativeState = details.native_telemetry || "not configured";
     const dropped = Number(details.native_dropped_events || 0);
     const artifactIssues = Array.isArray(details.artifact_issues) ? details.artifact_issues : [];
+    const operationStatus = operation?.status || (paused ? "degraded" : state.capabilities.menuBar ? "healthy" : "unknown");
+    const mode = paused ? "Paused" : details.monitoring_mode === "continuous local scheduling" ? "Continuous" : title(details.monitoring_mode || "Continuous");
     const signals = [
       {name:"scan_freshness",status:freshness.fresh?"healthy":"degraded",message:freshness.fresh?"The current report is recent.":"The current report is older than 2½ minutes."},
       {name:"app_placement",status:installed?"healthy":"degraded",message:installed?"RATtler is running from Applications.":"Move RATtler into Applications and reopen it."},
+      {name:"background_monitoring",status:operationStatus,message:paused?"Continuous monitoring is explicitly paused; manual scans still work.":operation?.message || "The native menu-bar scheduler is active."},
       {name:"event_continuity",status:["healthy","not configured"].includes(eventState)?"healthy":eventState,message:eventState==="not configured"?"One-time snapshot mode; continuous event state is not enabled.":`Continuous event state is ${eventState}.`},
       {name:"local_state_protection",status:artifactIssues.length?"degraded":"healthy",message:artifactIssues.length?`${artifactIssues.length} local monitoring artifact needs review.`:`${Number(details.artifacts_checked || 0)} local monitoring artifacts passed permission checks.`},
       {name:"native_event_loss",status:nativeState==="not configured"?"healthy":dropped?"degraded":nativeState,message:nativeState==="not configured"?"Native telemetry is optional and not provisioned.":dropped?`${dropped} native events were dropped.`:"No native event loss was reported."}
@@ -264,7 +270,7 @@
     const behavioral = (behavior.sensors || []).filter(item => item.name !== "bluepulse");
     $("#bluepulse-content").innerHTML = `
       <article class="panel bluepulse-hero ${esc(effectiveStatus)}"><div class="pulse-orb"><span></span><i></i></div><div class="bluepulse-copy"><div class="status-kicker">${esc(confidence.toUpperCase())} CONFIDENCE</div><h2>${esc(headline)}</h2><p>${esc(explanation)}</p><small>Confidence describes visibility—not whether findings are safe or malicious.</small></div><div class="pulse-trace"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></article>
-      <div class="sensor-summary">${metric(ageLabel(freshness.age),"Last scan",freshness.fresh?"Current":"Refresh recommended","clock",freshness.fresh?"":"warning")}${metric(`${Number(details.operational || 0)}/${Number(details.monitored || 0)}`,"Operational","Available layers","check",pulse.status==="healthy"?"":"warning")}${metric(title(details.monitoring_mode || "snapshot"),"Mode","Local monitoring","coverage","info")}</div>
+      <div class="sensor-summary">${metric(ageLabel(freshness.age),"Last scan",freshness.fresh?"Current":"Refresh recommended","clock",freshness.fresh?"":"warning")}${metric(`${Number(details.operational || 0)}/${Number(details.monitored || 0)}`,"Operational","Available layers","check",pulse.status==="healthy"?"":"warning")}${metric(mode,"Mode",paused?"Scheduling stopped":"Local scheduling","coverage",paused?"warning":"info")}</div>
       ${sensorGroup("Assurance signals", signals)}
       ${sensorGroup("Endpoint protection", protection.checks || [])}
       ${sensorGroup("Behavioral sensors", behavioral)}
@@ -292,6 +298,12 @@
     $("#installation-description").textContent = state.capabilities.installed ? "RATtler is running from Applications." : "Close RATtler, drag it into Applications, then reopen it there.";
     $("#installation-state").textContent = state.capabilities.installed ? "INSTALLED" : "MOVE APP";
     $("#installation-state").classList.toggle("warning", !state.capabilities.installed);
+    const paused = state.capabilities.monitoringPaused === true;
+    $("#monitoring-description").textContent = paused ? "Scheduled scans are paused. The menu-bar controller remains available and manual scans still work." : `The native scheduler checks this Mac every ${Number(state.capabilities.backgroundInterval || 60)} seconds, even when the window is closed.`;
+    $("#monitoring-button").textContent = paused ? "Resume" : "Pause";
+    $("#login-switch").checked = state.capabilities.launchAtLogin === true;
+    $("#login-description").textContent = state.capabilities.launchAtLoginStatus === "approval required" ? "Approval is required in System Settings → General → Login Items." : state.capabilities.launchAtLogin ? "RATtler will start after you sign in." : "Keep protection available after you sign in.";
+    $("#notification-switch").checked = state.capabilities.notificationsEnabled === true;
     $("#native-settings").innerHTML = nativeCard();
     const active = state.quarantine.filter(entry => entry.status === "quarantined");
     $("#quarantine-list").innerHTML = active.length ? active.map(entry => `<div class="quarantine-entry"><div><strong title="${esc(entry.original_path)}">${esc(entry.original_path)}</strong><small>${esc(String(entry.sha256 || "").slice(0,16))}… · ${esc(entry.id)}</small></div><button class="quiet-button restore-button" data-id="${esc(entry.id)}">Review restore</button></div>`).join("") : `<span>No quarantined files are awaiting restore.</span>`;
@@ -306,8 +318,11 @@
   }
   function renderChrome() {
     const status = state.report?.status || "unknown";
-    $("#sidebar-dot").className = `status-dot ${status}`;
-    $("#sidebar-label").textContent = state.report ? statusLabel(status) : "Awaiting scan";
+    const paused = state.capabilities.monitoringPaused === true;
+    $("#sidebar-dot").className = `status-dot ${paused ? "degraded" : status}`;
+    $("#sidebar-label").textContent = paused ? "Monitoring paused" : state.report ? statusLabel(status) : "Awaiting scan";
+    $("#pause-button").textContent = paused ? "Resume" : "Pause";
+    $("#pause-button").classList.toggle("warning", paused);
     $("#export-button").disabled = !state.report;
   }
   function renderAll() { renderDashboard(); renderFindings(); renderFileScan(); renderDetectionLab(); renderRansomware(); renderPersistence(); renderBluePulse(); renderActivity(); renderSettings(); renderChrome(); }
@@ -324,9 +339,11 @@
 
   $$(".nav-item").forEach(button => button.addEventListener("click", () => { $$(".nav-item").forEach(item=>item.classList.remove("active")); button.classList.add("active"); $$(".view").forEach(view=>view.classList.remove("active")); $(`#${button.dataset.view}`).classList.add("active"); if(button.dataset.view==="settings") { native("listQuarantine"); native("listExceptions"); } }));
   $("#scan-button").addEventListener("click",()=>native("scan")); $("#export-button").addEventListener("click",()=>native("export")); $("#reveal-button").addEventListener("click",()=>native("reveal")); $("#quarantine-folder-button").addEventListener("click",()=>native("revealQuarantine")); $("#quarantine-refresh-button").addEventListener("click",()=>native("listQuarantine"));
+  const toggleMonitoring=()=>native("setMonitoringPaused",{paused:!state.capabilities.monitoringPaused});
+  $("#pause-button").addEventListener("click",toggleMonitoring); $("#monitoring-button").addEventListener("click",toggleMonitoring);
+  $("#login-switch").addEventListener("change",event=>native("setLaunchAtLogin",{enabled:event.target.checked}));
+  $("#notification-switch").addEventListener("change",event=>native("setNotifications",{enabled:event.target.checked}));
   $("#baseline-button").addEventListener("click",()=>{ if(confirm(`${state.capabilities.baseline ? "Replace" : "Create"} the integrity baseline?\n\nOnly continue after reviewing the current scan and trusting this Mac’s present state.`)) native("baseline"); });
   $("#severity-filter").addEventListener("change",renderFindings); $("#finding-search").addEventListener("input",renderFindings); $("#toast button").addEventListener("click",()=>$("#toast").classList.remove("visible"));
-  const auto=$("#auto-scan"), storedAuto=localStorage.getItem("rattler-auto-scan"); auto.checked=storedAuto===null?true:storedAuto==="true"; const configureAuto=()=>{ clearInterval(state.autoTimer); state.autoTimer=null; if(auto.checked) state.autoTimer=setInterval(()=>native("scan"),60000); localStorage.setItem("rattler-auto-scan",auto.checked); }; auto.addEventListener("change",configureAuto); configureAuto();
-  setInterval(()=>{ if ($("#bluepulse").classList.contains("active")) renderBluePulse(); },30000);
   native("capabilities");
 })();

@@ -41,6 +41,7 @@ nav { display: grid; gap: 3px; padding: 0 9px; }
 main { position: relative; min-width: 0; height: 100%; overflow: hidden; }
 .topbar { height: 62px; display: flex; align-items: center; gap: 9px; padding: 18px 26px 0 24px; border-bottom: 1px solid rgba(255,255,255,.045); background: rgba(9,16,26,.68); backdrop-filter: blur(18px); }
 .topbar-spacer { flex: 1; }.activity-message { color: var(--faint); font-size: 10px; font-weight: 550; }
+.operation-button { min-width: 64px; }
 .icon-button, .quiet-button { border: 1px solid var(--border); background: rgba(255,255,255,.055); color: rgba(255,255,255,.75); cursor: default; transition: all .15s ease; }
 .icon-button { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; font-size: 16px; }.icon-button svg { width: 15px; height: 15px; }
 .icon-button:hover:not(:disabled), .quiet-button:hover { background: rgba(255,255,255,.095); color: #fff; }

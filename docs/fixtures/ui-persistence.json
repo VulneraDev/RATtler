@@ -39,7 +39,8 @@
           ]
         }
       },
-      {"name": "bluepulse", "status": "healthy", "message": "available sensor coverage verified", "details": {"confidence": "high", "operational": 3, "monitored": 3, "coverage_gaps": [], "monitoring_mode": "continuous snapshots"}}
+      {"name": "continuous_operation", "status": "healthy", "message": "native scan scheduler is active", "details": {"operation_status": "active", "interval_seconds": 60, "heartbeat_age_seconds": 2.4, "host_process_alive": true, "menu_bar": true, "launch_at_login": true, "last_scan_at": "2026-09-14T13:31:10Z"}},
+      {"name": "bluepulse", "status": "healthy", "message": "available sensor coverage verified", "details": {"confidence": "high", "operational": 4, "monitored": 4, "coverage_gaps": [], "monitoring_mode": "continuous local scheduling", "continuous_operation": "healthy", "operation_status": "active"}}
     ],
     "findings": [],
     "events": []

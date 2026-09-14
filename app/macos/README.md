@@ -6,8 +6,16 @@ its structured report, and offers explicit local quarantine for eligible
 file-backed findings without uploading endpoint data.
 
 The BluePulse view separates detection confidence from threat status. It shows
-scan freshness, responding layers, event continuity, monitoring-file permission
-health, native collector heartbeat state, and dropped-event evidence.
+scan freshness, responding layers, native scheduling and pause state,
+monitoring-file permission health, native collector heartbeat state, and
+dropped-event evidence.
+
+The native app owns a 60-second scheduler and menu-bar controller. Closing the
+main window leaves scheduled scans running. The menu exposes reopen, scan now,
+pause/resume, start-at-login, notification, and quit controls. Finding
+notifications are opt-in and omit paths. A private operation heartbeat lets the
+engine verify whether this controller is actually alive. See the
+[continuous-operation guide](../../docs/CONTINUOUS_OPERATION.md).
 
 Loaded-code findings include path, CDHash, signature type, and Team ID when
 available. RATtler explicitly labels code running from macOS App Translocation
@@ -17,7 +25,8 @@ The Ransomware Defense view compares bounded metadata snapshots of Desktop,
 Documents, and Pictures on every scan. It surfaces rewrite bursts,
 encryption-style renames, ransom-note filenames, mass deletion, and local
 canary damage without reading or uploading protected-file contents. Automatic
-monitoring is enabled by default and runs every 60 seconds while the app is open.
+monitoring is enabled by default and runs every 60 seconds while the native app
+is running, even when its main window is closed.
 
 Recovery Vault is optional. After native confirmation it keeps up to 512 MB of
 versioned, content-addressed document and photo copies beneath Application
@@ -54,6 +63,10 @@ Gatekeeper globally.
 If RATtler is launched outside Applications, the dashboard shows a move reminder.
 The app passes its exact PID to the engine, and the engine also excludes its own
 PID, so neither process is treated as an endpoint finding.
+
+Start at login uses `SMAppService.mainAppService` and may require approval in
+**System Settings → General → Login Items**. Notifications use the native user
+notification permission prompt. Neither feature is enabled silently.
 
 ## Development build
 
@@ -97,7 +110,8 @@ shasum -a 256 -c RATtler-macOS-Intel.sha256
 
 Use `RATtler-macOS-Apple-Silicon.sha256` instead on an Apple-chip Mac.
 
-The app writes mode-`0600` state, journals, baselines, and reports beneath
+The app writes mode-`0600` state, operation heartbeat, last report, journals,
+baselines, and reports beneath
 `~/Library/Application Support/RATtler`. Its WebKit view has a restrictive
 content-security policy and never loads remote application code. A quarantine
 action first computes the file's SHA-256, shows the exact path and digest in a

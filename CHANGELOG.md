@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.16.0
+
+- Move scheduled scans from the WebKit interface into a native 60-second macOS
+  scheduler that continues while the main window is closed
+- Add a menu-bar controller for reopen, scan now, pause/resume, login-item,
+  notification, and explicit quit actions
+- Add native Service Management controls for start at login and opt-in local
+  notifications for new high-priority findings without endpoint paths
+- Persist the latest report and a private operation heartbeat containing the
+  scheduler state, PID, interval, last scan, and login-item state
+- Add a bounded `continuous_operation` assurance sensor and teach BluePulse to
+  surface stopped, stale, unsafe, or explicitly paused background monitoring
+- Replace the browser-local auto-scan switch with clear native controls and add
+  a reproducible continuous-operation Settings screenshot
+- Keep signed in-app update metadata gated on Developer ID signing and Apple
+  notarization; v0.16 continues to use manual GitHub Release replacement
+
 ## 0.15.0
 
 - Add Persistence Atlas with independently reported coverage for login items,

@@ -49,7 +49,7 @@
       </nav>
       <div class="sidebar-status">
         <span id="sidebar-dot" class="status-dot unknown"></span>
-        <div><strong id="sidebar-label">Awaiting scan</strong><small>Community Preview <span id="app-version">0.15.0</span></small></div>
+        <div><strong id="sidebar-label">Awaiting scan</strong><small>Community Preview <span id="app-version">0.16.0</span></small></div>
       </div>
     </aside>
 
@@ -57,6 +57,7 @@
       <header class="topbar">
         <div class="topbar-spacer"></div>
         <span id="activity-message" class="activity-message">Starting RATtler…</span>
+        <button id="pause-button" class="quiet-button operation-button">Pause</button>
         <button id="export-button" class="icon-button" title="Export report" disabled><svg><use href="#i-export"></use></svg></button>
         <button id="scan-button" class="scan-button"><svg class="scan-glyph"><use href="#i-refresh"></use></svg><span>Scan now</span></button>
       </header>
@@ -123,7 +124,11 @@
               <h3>Monitoring</h3>
               <div class="setting-row"><span class="setting-icon">→</span><div><strong>Installation</strong><p id="installation-description">Checking where RATtler is running.</p></div><span id="installation-state" class="local-badge">CHECKING</span></div>
               <div class="divider"></div>
-              <div class="setting-row"><span class="setting-icon">↻</span><div><strong>Scan automatically</strong><p>Refresh endpoint posture every 60 seconds while RATtler is open.</p></div><label class="switch"><input id="auto-scan" type="checkbox"><span></span></label></div>
+              <div class="setting-row"><span class="setting-icon">↻</span><div><strong>Continuous monitoring</strong><p id="monitoring-description">The native scheduler checks this Mac every 60 seconds, even when the window is closed.</p></div><button id="monitoring-button" class="quiet-button">Pause</button></div>
+              <div class="divider"></div>
+              <div class="setting-row"><span class="setting-icon">⇥</span><div><strong>Start at login</strong><p id="login-description">Keep protection available after you sign in.</p></div><label class="switch"><input id="login-switch" type="checkbox"><span></span></label></div>
+              <div class="divider"></div>
+              <div class="setting-row"><span class="setting-icon">◇</span><div><strong>Finding notifications</strong><p>Optional local alerts for new critical or high-priority findings. File paths never appear in notifications.</p></div><label class="switch"><input id="notification-switch" type="checkbox"><span></span></label></div>
               <div class="divider"></div>
               <div class="setting-row"><span class="setting-icon">⌕</span><div><strong>Integrity baseline</strong><p id="baseline-description">Create this only after reviewing a clean endpoint scan.</p></div><button id="baseline-button" class="quiet-button">Create baseline</button></div>
             </article>

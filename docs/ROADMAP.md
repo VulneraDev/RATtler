@@ -32,8 +32,8 @@ Status: implemented.
 - Mark stale app reports and unsafe app placement as confidence problems.
 
 BluePulse provides evidence within RATtler's current privilege boundary. It does
-not claim same-user tamper resistance or background protection while the app is
-closed; those require the signed system-extension design below.
+not claim same-user tamper resistance or protection after the native host quits;
+those require the signed system-extension design below.
 
 ## 0.9 — Ransomware Defense
 
@@ -46,7 +46,8 @@ Status: implemented.
 - Expose protected-folder coverage, change velocity, and evidence in a dedicated
   native-app tab.
 - Read no protected-file contents and upload no paths or findings.
-- Run automatically every 60 seconds while the app is open.
+- Run automatically every 60 seconds while the native host is running,
+  including when its window is closed.
 
 This layer is detection-only. It cannot stop writes already in progress or
 recover encrypted files, and same-user malware could tamper with its local
@@ -189,14 +190,19 @@ evidence.
 
 ## 0.16 — Continuous local operation
 
-Status: planned.
+Status: implemented, except signed update metadata.
 
-- Add an optional menu-bar controller, launch-at-login flow, local notifications,
-  and explicit pause/resume state.
-- Make background operation observable through BluePulse freshness and event-loss
-  evidence rather than silently claiming continuous protection.
-- Add signed update metadata and rollback-safe releases after Developer ID and
-  notarization are available.
+- Add a menu-bar controller that keeps scheduled local scans running after the
+  main window closes and always exposes scan, pause/resume, reopen, and quit.
+- Add explicit launch-at-login registration through macOS Service Management.
+- Add opt-in local notifications for new high-priority findings without
+  exposing endpoint paths in notification text.
+- Persist a private native-operation heartbeat and last report; verify host PID,
+  interval, freshness, pause state, and permissions through BluePulse.
+
+Signed update metadata and rollback-safe in-app updates remain gated on a
+Developer ID, hardened runtime, and notarization. The current update path is a
+manual replacement from GitHub Releases and is described as such.
 
 ## 1.0 — Signed system extension and tamper evidence
 
