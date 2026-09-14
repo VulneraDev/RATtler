@@ -20,7 +20,20 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: python -m pip install -e .
-      - run: python -m unittest discover -s tests -v
+      - if: runner.os != 'Windows'
+        run: python -m unittest discover -s tests -v
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $lines = @(& python -m unittest discover -s tests -v 2>&1)
+          $code = $LASTEXITCODE
+          $lines | ForEach-Object { Write-Output $_ }
+          if ($code -ne 0) {
+            $detail = (($lines | Select-Object -Last 80) -join "`n")
+            $escaped = $detail.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Output "::error title=Windows unit-test failure::$escaped"
+            exit $code
+          }
       - if: runner.os == 'macOS'
         run: make -C native/macos
       - if: runner.os == 'macOS' && matrix.python-version == '3.13'
