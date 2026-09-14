@@ -74,7 +74,8 @@ class NativeCursorTests(unittest.TestCase):
         self.assertEqual(second.status, Status.HEALTHY)
         self.assertEqual(len(events), 3)
         self.assertEqual({item.rule_id for item in findings}, {"RAT-NATIVE-004", "RAT-NATIVE-006"})
-        self.assertEqual(cursor_mode, 0o600)
+        if os.name != "nt":
+            self.assertEqual(cursor_mode, 0o600)
 
     def test_malformed_event_is_skipped_and_degrades_coverage(self):
         with tempfile.TemporaryDirectory() as directory:

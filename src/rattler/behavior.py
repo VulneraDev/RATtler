@@ -8,6 +8,7 @@ never terminate, quarantine, or modify endpoint state.
 import os
 import platform
 import plistlib
+import posixpath
 import stat
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,29 +27,29 @@ class ProcessInfo:
 
 def _under(path: str, root: str) -> bool:
     try:
-        normalized_path = os.path.normpath(os.path.abspath(path))
-        normalized_root = os.path.normpath(os.path.abspath(root))
-        return os.path.commonpath((normalized_path, normalized_root)) == normalized_root
+        normalized_path = posixpath.normpath(posixpath.abspath(path))
+        normalized_root = posixpath.normpath(posixpath.abspath(root))
+        return posixpath.commonpath((normalized_path, normalized_root)) == normalized_root
     except ValueError:
         return False
 
 
 def suspicious_location(path: str, home: Optional[str] = None) -> Optional[str]:
     """Return a human-readable reason when an executable uses a risky location."""
-    if not path or not os.path.isabs(path):
+    if not path or not posixpath.isabs(path):
         return None
     user_home = home or str(Path.home())
     roots = (
         ("/tmp", "temporary directory"),
         ("/private/tmp", "temporary directory"),
         ("/var/tmp", "temporary directory"),
-        (os.path.join(user_home, "Downloads"), "Downloads directory"),
-        (os.path.join(user_home, ".cache"), "user cache directory"),
+        (posixpath.join(user_home, "Downloads"), "Downloads directory"),
+        (posixpath.join(user_home, ".cache"), "user cache directory"),
     )
     for root, reason in roots:
         if _under(path, root):
             return reason
-    real_path = os.path.normpath(os.path.abspath(path))
+    real_path = posixpath.normpath(posixpath.abspath(path))
     if real_path.startswith(("/private/var/folders/", "/var/folders/")) and "/T/" in real_path:
         return "per-user temporary directory"
     if path.endswith(" (deleted)"):

@@ -32,7 +32,8 @@ class FingerprintTests(unittest.TestCase):
             summary = write_baseline(path, [entry])
             mode = os.stat(str(path)).st_mode & 0o777
             loaded = _load(path)
-        self.assertEqual(mode, 0o600)
+        if os.name != "nt":
+            self.assertEqual(mode, 0o600)
         self.assertEqual(loaded, [entry])
         self.assertEqual(summary["entries"], 1)
 

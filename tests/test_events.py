@@ -66,7 +66,8 @@ class EventStateTests(unittest.TestCase):
                 document = json.load(handle)
         self.assertEqual(check.status, Status.HEALTHY)
         self.assertEqual((events, findings), ([], []))
-        self.assertEqual(mode, 0o600)
+        if os.name != "nt":
+            self.assertEqual(mode, 0o600)
         self.assertEqual(document["schema"], 1)
 
     def test_journal_rotates_and_remains_private(self):
@@ -77,7 +78,8 @@ class EventStateTests(unittest.TestCase):
             _append_journal(journal, [event], 10)
             mode = os.stat(str(journal)).st_mode & 0o777
             backup_exists = Path(str(journal) + ".1").exists()
-        self.assertEqual(mode, 0o600)
+        if os.name != "nt":
+            self.assertEqual(mode, 0o600)
         self.assertTrue(backup_exists)
 
 
