@@ -26,8 +26,10 @@ class ProcessInfo:
 
 def _under(path: str, root: str) -> bool:
     try:
-        return os.path.commonpath((os.path.realpath(path), os.path.realpath(root))) == os.path.realpath(root)
-    except (OSError, ValueError):
+        normalized_path = os.path.normpath(os.path.abspath(path))
+        normalized_root = os.path.normpath(os.path.abspath(root))
+        return os.path.commonpath((normalized_path, normalized_root)) == normalized_root
+    except ValueError:
         return False
 
 
@@ -46,6 +48,9 @@ def suspicious_location(path: str, home: Optional[str] = None) -> Optional[str]:
     for root, reason in roots:
         if _under(path, root):
             return reason
+    real_path = os.path.normpath(os.path.abspath(path))
+    if real_path.startswith("/private/var/folders/") and "/T/" in real_path:
+        return "per-user temporary directory"
     if path.endswith(" (deleted)"):
         return "deleted executable image"
     return None
@@ -243,10 +248,13 @@ def network_sensor(processes: Dict[int, ProcessInfo], home: Optional[str] = None
 
 
 def scan_behavior(home: Optional[str] = None, persistence_paths: Optional[Sequence[Path]] = None) -> BehaviorReport:
+    from .injection import loaded_image_sensor
+
     process_check, process_findings, processes = process_sensor(home)
     persistence_check, persistence_findings = persistence_sensor(persistence_paths, home)
     network_check, network_findings = network_sensor(processes, home)
+    image_check, image_findings = loaded_image_sensor(processes, home)
     return BehaviorReport(
-        sensors=[process_check, persistence_check, network_check],
-        findings=process_findings + persistence_findings + network_findings,
+        sensors=[process_check, persistence_check, network_check, image_check],
+        findings=process_findings + persistence_findings + network_findings + image_findings,
     )

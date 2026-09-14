@@ -17,6 +17,8 @@ Behavioral sensors in the current macOS-first build:
 - LaunchAgents and LaunchDaemons using risky, relative, missing, or world-writable executables
 - `DYLD_INSERT_LIBRARIES` and `LD_PRELOAD` configured through launchd persistence
 - TCP services listening on every interface, correlated to their process path
+- Deleted or untrusted Mach-O images mapped into protected processes
+- Code-signing and Team ID mismatches for modules loaded from user-writable paths
 
 Findings are indicators for review, not malware verdicts. RATtler never kills a
 process, deletes a file, or changes a persistence entry.
@@ -59,10 +61,12 @@ or file contents in providers.
 
 This is an alpha anti-RAT foundation, not a replacement for antivirus/EDR. The
 behavioral sensors are macOS-first; Windows and Linux currently receive antivirus
-health plus the portable process/listener checks. RATtler does not yet inspect
-live process memory, loaded modules, or kernel telemetry, so it cannot rule out
-in-memory injection. Validate it against the endpoint images you operate before
-alerting on it.
+health plus the portable process/listener checks. Loaded-image inspection covers
+file-backed Mach-O mappings visible to the current user. Anonymous executable
+memory, in-place modification within an application's own signed bundle, and
+kernel-level injection require deeper OS telemetry or a persistent hash baseline
+and remain future work. Validate RATtler against the endpoint images you operate
+before alerting.
 
 Contributions are welcome under the MIT license. See
 [`CONTRIBUTING.md`](CONTRIBUTING.md).

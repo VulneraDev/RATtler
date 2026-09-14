@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0
+
+- Inventory file-backed executable mappings in eligible macOS processes
+- Detect deleted Mach-O images retained in protected processes
+- Verify modules loaded from user-writable paths with native code signing
+- Compare module and host Team IDs to identify unexpected cross-vendor injection
+- Exclude interpreters and data-only mappings to reduce false positives
+
 ## 0.2.0
 
 - Add behavioral assessment and risk-ranked findings
