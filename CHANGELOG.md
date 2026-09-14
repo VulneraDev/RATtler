@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.11.0
+
+- Record CDHash, signature kind, Team ID, and identifier for bounded
+  user-writable loaded-code candidates
+- Persist loaded path plus signing identity and alert when a CDHash or signer
+  changes at the same path
+- Explicitly identify executables running from randomized macOS App
+  Translocation paths without treating translocation alone as malware
+- Add CDHash to new loaded-code integrity baselines while keeping older
+  baselines upgrade-compatible
+- Include the acting process CDHash in native Endpoint Security JSONL events
+- Keep notarization documented as distribution trust rather than a runtime
+  behavior verdict
+
 ## 0.10.0
 
 - Add an opt-in, 512 MiB Recovery Vault for versioned documents and photos

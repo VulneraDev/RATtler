@@ -99,9 +99,10 @@ rattler --baseline ~/.rattler/baseline.json --watch --changes-only
 ```
 
 The baseline tracks SHA-256 content, size, permissions, ownership, and symlink
-targets for launchd plists, startup executables, and active Mach-O code in
-user-writable locations. It is mode `0600`. Same-user malware could replace a
-local baseline, so keep a protected copy when higher assurance is required.
+targets. For active Mach-O code in user-writable locations it also records the
+signing CDHash when available. It is mode `0600`. Same-user malware could
+replace a local baseline, so keep a protected copy when higher assurance is
+required.
 
 ## Event correlation
 
@@ -113,8 +114,11 @@ rattler --state ~/.rattler/state.json \
 ```
 
 The first run initializes state quietly. Later scans report process starts, new
-listeners and connections, persistence changes, and newly loaded code. The
-default correlation window is 15 minutes; change it with `--event-window`.
+listeners and connections, persistence changes, and newly loaded code. Risky
+loaded-image state includes its path, CDHash, signing kind, Team ID, and App
+Translocation status; a CDHash or signer change at the same path becomes a
+high-priority finding. The default correlation window is 15 minutes; change it
+with `--event-window`.
 The JSONL journal rotates at 10 MiB by default.
 
 ## Quarantine and restore

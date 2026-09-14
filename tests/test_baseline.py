@@ -53,6 +53,15 @@ class ComparisonTests(unittest.TestCase):
         self.assertEqual(findings[0].rule_id, "RAT-BASE-003")
         self.assertEqual(findings[0].severity, Severity.HIGH)
 
+    def test_loaded_code_cdhash_drift_is_recorded(self):
+        old = Fingerprint("/tmp/plugin.dylib", "loaded_macho", "same", 10, 0o755, 501, 20,
+                          cdhash="a" * 40)
+        new = Fingerprint("/tmp/plugin.dylib", "loaded_macho", "same", 10, 0o755, 501, 20,
+                          cdhash="b" * 40)
+        findings = compare_entries([old], [new])
+        self.assertIn("cdhash", findings[0].evidence["changed"])
+        self.assertEqual(findings[0].evidence["expected_cdhash"], "a" * 40)
+
     def test_create_then_check_detects_plist_tampering(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "LaunchAgents"

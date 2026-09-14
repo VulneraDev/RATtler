@@ -8,6 +8,7 @@ from rattler.injection import (
     analyze_loaded_images,
     parse_loaded_images,
     signature_info,
+    signature_metadata,
 )
 from rattler.runner import CommandResult
 from rattler.model import Severity
@@ -70,8 +71,33 @@ class LoadedImageAnalysisTests(unittest.TestCase):
         self.assertEqual(inspected, 1)
         self.assertEqual(findings, [])
 
+    @patch("rattler.injection.is_macho", return_value=True)
+    @patch("rattler.injection.verify_signature", return_value=True)
+    @patch("rattler.injection.signature_metadata")
+    def test_flags_translocated_executable_with_cdhash(self, mocked_signature, _verify, _macho):
+        path = "/private/var/folders/ab/cd/T/AppTranslocation/UUID/d/Test.app/Contents/MacOS/Test"
+        mocked_signature.return_value = SignatureInfo(
+            True, "signed", "TEAM123", "dev.example.test", "a" * 40,
+        )
+        findings, inspected = analyze_loaded_images(
+            [LoadedImage(42, "Test", path)], {42: ProcessInfo(42, 1, path)}, "/Users/test",
+        )
+        self.assertEqual(inspected, 1)
+        self.assertEqual(findings[0].rule_id, "RAT-INJECT-004")
+        self.assertEqual(findings[0].severity, Severity.MEDIUM)
+        self.assertEqual(findings[0].evidence["module_cdhash"], "a" * 40)
+        self.assertTrue(findings[0].evidence["app_translocated"])
+
 
 class SignatureTests(unittest.TestCase):
+    @patch("rattler.injection.run")
+    def test_signature_metadata_records_valid_cdhash(self, mocked_run):
+        mocked_run.return_value = CommandResult(
+            0, "", "Identifier=dev.example.test\nTeamIdentifier=TEAM123\nCDHash=" + "A1" * 20,
+        )
+        result = signature_metadata("/Applications/Test.app")
+        self.assertEqual(result.cdhash, "a1" * 20)
+
     @patch("rattler.injection.run")
     def test_apple_platform_signature_is_not_treated_as_adhoc(self, mocked_run):
         mocked_run.side_effect = [

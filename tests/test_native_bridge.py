@@ -136,6 +136,7 @@ class NativeCursorTests(unittest.TestCase):
         source = (ROOT / "native/macos/Sources/rattler_es_sensor.c").read_text(encoding="utf-8")
         self.assertIn("emit_heartbeat", source)
         self.assertIn("15 * NSEC_PER_SEC", source)
+        self.assertIn('json_cdhash(output, process->cdhash)', source)
 
     def test_native_guard_defaults_to_shadow_and_requires_enforcement_acknowledgement(self):
         source = (ROOT / "native/macos/Sources/rattler_es_guard.c").read_text(encoding="utf-8")

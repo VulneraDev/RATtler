@@ -9,6 +9,10 @@ The BluePulse view separates detection confidence from threat status. It shows
 scan freshness, responding layers, event continuity, monitoring-file permission
 health, native collector heartbeat state, and dropped-event evidence.
 
+Loaded-code findings include path, CDHash, signature type, and Team ID when
+available. RATtler explicitly labels code running from macOS App Translocation
+paths and reports identity drift at a previously observed loaded path.
+
 The Ransomware Defense view compares bounded metadata snapshots of Desktop,
 Documents, and Pictures on every scan. It surfaces rewrite bursts,
 encryption-style renames, ransom-note filenames, mass deletion, and local

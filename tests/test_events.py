@@ -8,12 +8,14 @@ from unittest.mock import patch
 
 from rattler.events import (
     _append_journal,
+    _image_snapshot,
     _process_snapshot,
     correlate,
     diff_snapshots,
     parse_sockets,
     update_events,
 )
+from rattler.injection import LoadedImage, SignatureInfo
 from rattler.model import Event, Severity, Status
 
 
@@ -55,8 +57,72 @@ class EventDiffTests(unittest.TestCase):
         self.assertEqual(findings[0].rule_id, "RAT-CORR-001")
         self.assertEqual(derived[0].severity, Severity.CRITICAL)
 
+    def test_cdhash_change_at_same_loaded_path_is_high_priority(self):
+        old = {
+            "processes": {}, "sockets": {}, "persistence": {},
+            "images": {"42|/tmp/plugin.dylib": {
+                "pid": 42, "process": "Test", "path": "/tmp/plugin.dylib",
+                "cdhash": "a" * 40, "signature": "signed", "team_id": "TEAM123",
+            }},
+        }
+        new = {
+            "processes": {}, "sockets": {}, "persistence": {},
+            "images": {"42|/tmp/plugin.dylib": {
+                "pid": 42, "process": "Test", "path": "/tmp/plugin.dylib",
+                "cdhash": "b" * 40, "signature": "signed", "team_id": "TEAM123",
+            }},
+        }
+        events = diff_snapshots(old, new, NOW)
+        findings, _derived = correlate(events, {events[0].event_id}, NOW)
+        self.assertEqual(events[0].event_type, "loaded_image_identity_changed")
+        self.assertEqual(events[0].severity, Severity.HIGH)
+        self.assertEqual(findings[0].rule_id, "RAT-INJECT-005")
+        self.assertEqual(findings[0].evidence["previous_cdhash"], "a" * 40)
+
+    def test_first_cdhash_enrichment_does_not_create_an_upgrade_alert(self):
+        key = "42|/tmp/plugin.dylib"
+        old = {"processes": {}, "sockets": {}, "persistence": {}, "images": {
+            key: {"pid": 42, "process": "Test", "path": "/tmp/plugin.dylib"},
+        }}
+        new = {"processes": {}, "sockets": {}, "persistence": {}, "images": {
+            key: {"pid": 42, "process": "Test", "path": "/tmp/plugin.dylib", "cdhash": "a" * 40,
+                  "signature": "signed", "team_id": "TEAM123"},
+        }}
+        self.assertEqual(diff_snapshots(old, new, NOW), [])
+
+    def test_cdhash_drift_survives_process_restart(self):
+        old = {"processes": {}, "sockets": {}, "persistence": {}, "images": {
+            "41|/tmp/plugin.dylib": {"pid": 41, "path": "/tmp/plugin.dylib", "cdhash": "a" * 40,
+                                         "signature": "signed", "team_id": "TEAM123"},
+        }}
+        new = {"processes": {}, "sockets": {}, "persistence": {}, "images": {
+            "99|/tmp/plugin.dylib": {"pid": 99, "path": "/tmp/plugin.dylib", "cdhash": "b" * 40,
+                                         "signature": "signed", "team_id": "TEAM123"},
+        }}
+        events = diff_snapshots(old, new, NOW)
+        self.assertEqual(events[0].event_type, "loaded_image_identity_changed")
+        self.assertEqual(events[0].evidence["previous_pid"], 41)
+
 
 class EventStateTests(unittest.TestCase):
+    @patch("rattler.events.platform.system", return_value="Darwin")
+    @patch("rattler.events.run")
+    @patch("rattler.events.parse_loaded_images")
+    @patch("rattler.events.is_macho", return_value=True)
+    @patch("rattler.events.signature_metadata")
+    def test_loaded_image_snapshot_persists_signing_identity(
+        self, mocked_signature, _macho, mocked_images, mocked_run, _platform,
+    ):
+        path = "/tmp/plugin.dylib"
+        mocked_run.return_value = SimpleNamespace(returncode=0, stdout="fixture")
+        mocked_images.return_value = [LoadedImage(42, "Test", path)]
+        mocked_signature.return_value = SignatureInfo(
+            True, "signed", "TEAM123", "dev.example.plugin", "a" * 40,
+        )
+        snapshot = _image_snapshot()
+        self.assertEqual(snapshot["42|/tmp/plugin.dylib"]["cdhash"], "a" * 40)
+        self.assertEqual(snapshot["42|/tmp/plugin.dylib"]["team_id"], "TEAM123")
+
     @patch("rattler.events.run")
     def test_process_snapshot_excludes_engine_and_host_pid(self, mocked_run):
         mocked_run.return_value = SimpleNamespace(

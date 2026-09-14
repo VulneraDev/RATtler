@@ -25,6 +25,18 @@ class ProcessInfo:
     executable: str
 
 
+def is_app_translocated(path: str) -> bool:
+    """Return whether a path is inside macOS Gatekeeper App Translocation."""
+    if not path:
+        return False
+    normalized = posixpath.normpath(posixpath.abspath(path))
+    lowered = normalized.lower()
+    return (
+        lowered.startswith(("/private/var/folders/", "/var/folders/"))
+        and "/apptranslocation/" in lowered
+    )
+
+
 def _under(path: str, root: str) -> bool:
     try:
         normalized_path = posixpath.normpath(posixpath.abspath(path))
@@ -38,6 +50,8 @@ def suspicious_location(path: str, home: Optional[str] = None) -> Optional[str]:
     """Return a human-readable reason when an executable uses a risky location."""
     if not path or not posixpath.isabs(path):
         return None
+    if is_app_translocated(path):
+        return "App Translocation directory"
     user_home = home or str(Path.home())
     roots = (
         ("/tmp", "temporary directory"),

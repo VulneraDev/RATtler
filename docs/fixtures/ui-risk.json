@@ -16,9 +16,9 @@
       {"name": "processes", "status": "healthy", "message": "413 processes inspected", "details": {"count": 413}},
       {"name": "persistence", "status": "healthy", "message": "38 launchd entries inspected", "details": {"count": 38}},
       {"name": "listeners", "status": "healthy", "message": "9 TCP listeners inspected", "details": {"count": 9}},
-      {"name": "loaded_images", "status": "healthy", "message": "2,184 executable mappings inspected", "details": {"mappings": 2184}},
+      {"name": "loaded_images", "status": "healthy", "message": "2,184 executable mappings inspected", "details": {"mappings": 2184, "user_writable_candidates": 3, "translocated_candidates": 1, "identity_fields": ["path", "cdhash", "team_id"]}},
       {"name": "baseline", "status": "healthy", "message": "integrity baseline checked", "details": {"entries": 74}},
-      {"name": "events", "status": "healthy", "message": "event changes correlated", "details": {"events": 3, "correlations": 1}},
+      {"name": "events", "status": "healthy", "message": "event changes correlated", "details": {"events": 6, "findings": 2, "correlations": 1, "loaded_identities": 3, "loaded_identity_limit": 64}},
       {"name": "native_events", "status": "healthy", "message": "3 native events ingested", "details": {"events": 3, "heartbeats": 1, "heartbeat_age_seconds": 3.7}},
       {"name": "ransomware", "status": "healthy", "message": "ransomware behavior analyzed", "details": {"initialized": true, "monitored_files": 6844, "protected_folders": ["Desktop", "Documents", "Pictures"], "modified_files": 126, "created_files": 34, "deleted_files": 30, "extension_replacements": 18, "encrypted_names": 22, "ransom_notes": 1, "canary": "healthy", "access_errors": 0, "limited": false, "max_files": 25000, "detection_mode": "change snapshots while RATtler is open"}},
       {"name": "recovery_vault", "status": "healthy", "message": "recovery copies available", "details": {"enabled": true, "recoverable_files": 1248, "versions": 1371, "used_bytes": 184549376, "quota_bytes": 536870912, "updated_at": "2026-09-14T03:17:52Z"}},
@@ -39,7 +39,7 @@
         "severity": "high",
         "category": "injection",
         "message": "A protected process maps Mach-O code from a user-writable location.",
-        "evidence": {"host": "/Applications/Notes.app/Contents/MacOS/Notes", "image": "/tmp/diagnostic-plugin.dylib", "signature": "unsigned"}
+        "evidence": {"host": "/Applications/Notes.app/Contents/MacOS/Notes", "image": "/tmp/diagnostic-plugin.dylib", "signature": "unsigned", "module_cdhash": null, "host_cdhash": "907ba78b9b66c01c3a9a3015ef22e3f2d3a0c333", "app_translocated": false}
       },
       {
         "rule_id": "RAT-PROC-001",
@@ -48,6 +48,14 @@
         "category": "process",
         "message": "A running executable originates from a location frequently abused by droppers.",
         "evidence": {"pid": 731, "executable": "/tmp/diagnostic-helper", "reason": "temporary directory"}
+      },
+      {
+        "rule_id": "RAT-INJECT-005",
+        "title": "Loaded code identity changed at the same path",
+        "severity": "high",
+        "category": "injection",
+        "message": "A mapped Mach-O path now reports a different CDHash or signing identity.",
+        "evidence": {"pid": 488, "path": "/Users/demo/Library/Application Support/Notes/plugin.dylib", "previous_cdhash": "2ebd7c9c22a5b89e03edc8e05795d8114fd8bd9c", "cdhash": "f5152676b1648a049a3c067e05d62b24bf12fce6", "signature": "signed", "team_id": "DEMO123456", "identity_changed": true}
       },
       {
         "rule_id": "RAT-RANSOM-002",
@@ -69,7 +77,8 @@
     "events": [
       {"event_id": "demo-1", "event_type": "native_get_task", "severity": "high", "observed_at": "2026-09-14T03:18:39Z", "evidence": {"pid": 731, "target_pid": 488}},
       {"event_id": "demo-2", "event_type": "native_remote_thread_create", "severity": "critical", "observed_at": "2026-09-14T03:18:40Z", "evidence": {"pid": 731, "target_pid": 488}},
-      {"event_id": "demo-3", "event_type": "loaded_image_added", "severity": "high", "observed_at": "2026-09-14T03:18:42Z", "evidence": {"pid": 488, "path": "/tmp/diagnostic-plugin.dylib"}},
+      {"event_id": "demo-3", "event_type": "loaded_image_added", "severity": "high", "observed_at": "2026-09-14T03:18:42Z", "evidence": {"pid": 488, "path": "/tmp/diagnostic-plugin.dylib", "cdhash": null, "signature": "unsigned"}},
+      {"event_id": "demo-identity", "event_type": "loaded_image_identity_changed", "severity": "high", "observed_at": "2026-09-14T03:18:42Z", "evidence": {"pid": 488, "path": "/Users/demo/Library/Application Support/Notes/plugin.dylib", "previous_cdhash": "2ebd7c9c22a5b89e03edc8e05795d8114fd8bd9c", "cdhash": "f5152676b1648a049a3c067e05d62b24bf12fce6", "signature": "signed", "team_id": "DEMO123456"}},
       {"event_id": "demo-4", "event_type": "ransomware_extension_burst", "severity": "high", "observed_at": "2026-09-14T03:18:42Z", "evidence": {"extension_replacements": 18}},
       {"event_id": "demo-5", "event_type": "ransomware_note_created", "severity": "high", "observed_at": "2026-09-14T03:18:42Z", "evidence": {"count": 1}}
     ]

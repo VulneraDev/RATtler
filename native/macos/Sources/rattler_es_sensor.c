@@ -66,6 +66,24 @@ static void json_token(FILE *output, es_string_token_t token) {
     json_string_bytes(output, token.data, token.length);
 }
 
+#define RATTLER_CDHASH_BYTES 20
+
+static void json_cdhash(FILE *output, const uint8_t cdhash[RATTLER_CDHASH_BYTES]) {
+    bool present = false;
+    for (size_t index = 0; index < RATTLER_CDHASH_BYTES; index++) {
+        if (cdhash[index] != 0) present = true;
+    }
+    if (!present) {
+        fputs("null", output);
+        return;
+    }
+    fputc('"', output);
+    for (size_t index = 0; index < RATTLER_CDHASH_BYTES; index++) {
+        fprintf(output, "%02x", cdhash[index]);
+    }
+    fputc('"', output);
+}
+
 static void json_process_fields(FILE *output, const es_process_t *process, const char *prefix) {
     fprintf(output, "\"%spid\":%d,", prefix, audit_token_to_pid(process->audit_token));
     fprintf(output, "\"%spidversion\":%d,", prefix, audit_token_to_pidversion(process->audit_token));
@@ -76,6 +94,8 @@ static void json_process_fields(FILE *output, const es_process_t *process, const
     json_token(output, process->signing_id);
     fprintf(output, ",\"%steam_id\":", prefix);
     json_token(output, process->team_id);
+    fprintf(output, ",\"%scdhash\":", prefix);
+    json_cdhash(output, process->cdhash);
     fprintf(output, ",\"%scs_flags\":%u,", prefix, process->codesigning_flags);
     fprintf(output, "\"%splatform_binary\":%s", prefix, process->is_platform_binary ? "true" : "false");
 }

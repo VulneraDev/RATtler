@@ -40,8 +40,8 @@ sudo native/macos/build/rattler-es-sensor --output /var/log/rattler/native-event
 Use a root-controlled output directory in production. The collector creates its
 log with mode `0600`, refuses symbolic links and non-regular files, and reports
 global sequence gaps so the Python bridge can surface lost coverage. The log
-contains process paths, PIDs, signing identifiers, and Team IDs. It also writes
-a health-only heartbeat every 15 seconds. BluePulse marks the stream degraded
+contains process paths, PIDs, signing identifiers, Team IDs, and process
+CDHashes. It also writes a health-only heartbeat every 15 seconds. BluePulse marks the stream degraded
 after 45 seconds without a heartbeat or event, and heartbeat records do not
 appear in RATtler's activity timeline.
 

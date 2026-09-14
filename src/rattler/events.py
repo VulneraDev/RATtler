@@ -6,14 +6,21 @@ import platform
 import plistlib
 import tempfile
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from .baseline import _launchd_assets, fingerprint
-from .behavior import parse_processes, suspicious_location
-from .injection import _plausible_code_path, _user_writable_location, is_macho, parse_loaded_images
+from .behavior import is_app_translocated, parse_processes, suspicious_location
+from .injection import (
+    _plausible_code_path,
+    _user_writable_location,
+    is_macho,
+    parse_loaded_images,
+    signature_metadata,
+)
 from .model import Check, Event, Finding, Severity, Status
 from .runner import run
 
@@ -23,6 +30,7 @@ MAX_STATE_BYTES = 32 * 1024 * 1024
 DEFAULT_JOURNAL_BYTES = 10 * 1024 * 1024
 MAX_RECENT_EVENTS = 5000
 IGNORED_PROCESS_NAMES = {"ps", "lsof", "codesign"}
+MAX_IMAGE_IDENTITIES = 64
 
 
 @dataclass(frozen=True)
@@ -140,6 +148,7 @@ def _image_snapshot(excluded_pids: Optional[Iterable[int]] = None) -> Dict[str, 
     snapshot = {}
     exclusions = set(excluded_pids or ())
     exclusions.add(os.getpid())
+    candidates = []
     for image in parse_loaded_images(result.stdout):
         if image.pid in exclusions:
             continue
@@ -149,8 +158,26 @@ def _image_snapshot(excluded_pids: Optional[Iterable[int]] = None) -> Dict[str, 
         reason = suspicious_location(path)
         if not _plausible_code_path(path, reason) or not is_macho(path):
             continue
+        candidates.append((image, path))
+    candidates = sorted(candidates, key=lambda item: (item[0].pid, item[1]))[:MAX_IMAGE_IDENTITIES]
+    paths = sorted({path for _image, path in candidates})
+    signatures = {}
+    if paths:
+        with ThreadPoolExecutor(max_workers=min(8, len(paths))) as executor:
+            signatures = dict(zip(paths, executor.map(signature_metadata, paths)))
+    for image, path in candidates:
+        signature = signatures[path]
         key = "%s|%s" % (image.pid, path)
-        snapshot[key] = {"pid": image.pid, "process": image.process, "path": path}
+        snapshot[key] = {
+            "pid": image.pid,
+            "process": image.process,
+            "path": path,
+            "cdhash": signature.cdhash,
+            "signature": signature.kind,
+            "team_id": signature.team_id,
+            "identifier": signature.identifier,
+            "app_translocated": is_app_translocated(path),
+        }
     return snapshot
 
 
@@ -195,9 +222,41 @@ def diff_snapshots(old: Dict[str, object], new: Dict[str, object], observed_at: 
         events.append(_event(event_type, Severity.HIGH, evidence, observed_at))
 
     old_images = old.get("images", {}) if isinstance(old.get("images"), dict) else {}
+    old_images_by_path = {}
+    for old_image in old_images.values():
+        if isinstance(old_image, dict) and isinstance(old_image.get("path"), str):
+            old_images_by_path.setdefault(old_image["path"], old_image)
     for key, image in new.get("images", {}).items():
-        if key not in old_images:
-            events.append(_event("loaded_image_added", Severity.INFO, dict(image), observed_at))
+        previous = old_images.get(key)
+        identity_source = previous if isinstance(previous, dict) else old_images_by_path.get(image.get("path"))
+        previous_cdhash = identity_source.get("cdhash") if isinstance(identity_source, dict) else None
+        current_cdhash = image.get("cdhash")
+        identity_changed = (
+            isinstance(previous_cdhash, str) and isinstance(current_cdhash, str)
+            and previous_cdhash != current_cdhash
+        )
+        trust_changed = (
+            isinstance(identity_source, dict) and (
+                identity_source.get("signature") not in (None, image.get("signature"))
+                or identity_source.get("team_id") not in (None, image.get("team_id"))
+            )
+        )
+        if identity_changed or trust_changed:
+            evidence = {
+                **dict(image),
+                "previous_cdhash": previous_cdhash,
+                "previous_signature": identity_source.get("signature"),
+                "previous_team_id": identity_source.get("team_id"),
+                "previous_pid": identity_source.get("pid"),
+                "identity_changed": identity_changed,
+                "trust_changed": trust_changed,
+            }
+            events.append(_event("loaded_image_identity_changed", Severity.HIGH, evidence, observed_at))
+        elif previous is None:
+            untrusted = image.get("signature") in ("unsigned", "adhoc")
+            translocated = image.get("app_translocated") is True
+            severity = Severity.HIGH if untrusted else Severity.MEDIUM if translocated else Severity.INFO
+            events.append(_event("loaded_image_added", severity, dict(image), observed_at))
     return events
 
 
@@ -212,6 +271,15 @@ def correlate(events: List[Event], current_ids: set, observed_at: str) -> Tuple[
             persistence.append(event)
     findings = []
     derived = []
+    for event in events:
+        if event.event_id not in current_ids or event.event_type != "loaded_image_identity_changed":
+            continue
+        evidence = dict(event.evidence)
+        evidence["source_event"] = event.event_id
+        findings.append(Finding(
+            "RAT-INJECT-005", "Loaded code identity changed at the same path", Severity.HIGH,
+            "injection", "A mapped Mach-O path now reports a different CDHash or signing identity.", evidence,
+        ))
     for pid, items in by_pid.items():
         kinds = {item.event_type for item in items}
         relevant = any(item.event_id in current_ids for item in items)
@@ -336,7 +404,14 @@ def update_events(
         current = capture_snapshot(excluded_pids)
         if previous is None:
             _write_state(state_path, current, [])
-            return Check("events", Status.HEALTHY, "event state initialized", {"events": 0}), [], []
+            return Check(
+                "events", Status.HEALTHY, "event state initialized",
+                {
+                    "events": 0,
+                    "loaded_identities": len(current.get("images", {})),
+                    "loaded_identity_limit": MAX_IMAGE_IDENTITIES,
+                },
+            ), [], []
         raw_recent = previous.get("recent_events", [])
         recent = [
             Event(
@@ -358,7 +433,16 @@ def update_events(
             _append_journal(journal_path, journal_events, journal_max_bytes)
         _write_state(state_path, current, (recent + events)[-MAX_RECENT_EVENTS:])
         return (
-            Check("events", Status.HEALTHY, "event changes correlated", {"events": len(events), "correlations": len(findings)}),
+            Check(
+                "events", Status.HEALTHY, "event changes correlated",
+                {
+                    "events": len(events),
+                    "findings": len(findings),
+                    "correlations": len(derived),
+                    "loaded_identities": len(current.get("images", {})),
+                    "loaded_identity_limit": MAX_IMAGE_IDENTITIES,
+                },
+            ),
             journal_events,
             findings,
         )

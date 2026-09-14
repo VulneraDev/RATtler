@@ -11,8 +11,8 @@ the computer unless you export a report yourself.
 
 Download **one ZIP**—not both:
 
-- [Mac with an Apple chip](https://github.com/VulneraDev/RATtler/releases/download/v0.10.0/RATtler-macOS-Apple-Silicon.zip)
-- [Mac with an Intel processor](https://github.com/VulneraDev/RATtler/releases/download/v0.10.0/RATtler-macOS-Intel.zip)
+- [Mac with an Apple chip](https://github.com/VulneraDev/RATtler/releases/download/v0.11.0/RATtler-macOS-Apple-Silicon.zip)
+- [Mac with an Intel processor](https://github.com/VulneraDev/RATtler/releases/download/v0.11.0/RATtler-macOS-Intel.zip)
 
 Not sure which Mac you have? Open **Apple menu → About This Mac**:
 
@@ -110,7 +110,8 @@ Risk detected:
 - `DYLD_INSERT_LIBRARIES` and `LD_PRELOAD` persistence
 - TCP services exposed on every network interface
 - Deleted or untrusted Mach-O code loaded into protected processes
-- Code-signing and Team ID mismatches
+- Code-signing, Team ID, and CDHash identity changes
+- Executable code running from randomized App Translocation paths
 - Ransomware-style bulk rewrites, extension churn, ransom notes, mass deletion,
   and local canary damage
 - Opt-in, quota-limited, content-addressed recovery copies with automatic freeze
@@ -138,6 +139,8 @@ the file again and never overwrites an existing destination.
 - The app contains no telemetry upload or remote-control service.
 - Reports and response history stay in
   `~/Library/Application Support/RATtler`.
+- Local reports may contain executable paths, signing identifiers, Team IDs,
+  and CDHashes so a finding can be investigated without guessing code identity.
 - RATtler never quarantines automatically.
 - The current Endpoint Security collector is detection-only.
 - Ransomware monitoring records file paths, size, modification time, and inode

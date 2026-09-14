@@ -93,6 +93,24 @@ The prevention client will:
 No release build will silently weaken System Integrity Protection or ask users
 to install a legacy kernel extension.
 
+## 0.11 — Loaded-code identity
+
+Status: implemented.
+
+- Record path, CDHash, signature type, Team ID, and signing identifier for a
+  bounded set of user-writable loaded Mach-O candidates.
+- Preserve those identities in continuous event state and emit a high-priority
+  finding when CDHash or signer changes at the same loaded path.
+- Include CDHash in new loaded-code integrity baselines without turning an
+  older baseline's missing field into an upgrade alert.
+- Explicitly identify macOS App Translocation paths and keep the evidence at
+  review severity when the code is otherwise valid and consistently signed.
+- Include the actor CDHash in native Endpoint Security events when available.
+
+Notarization authenticates distribution; it is intentionally not used as a
+substitute for runtime path, signature, identity-drift, or process-ancestry
+evidence.
+
 ## 1.0 — Signed system extension and tamper evidence
 
 Status: planned after prevention validation.

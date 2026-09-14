@@ -18,6 +18,7 @@ from .injection import (
     _user_writable_location,
     is_macho,
     parse_loaded_images,
+    signature_metadata,
 )
 from .model import Check, Finding, Severity, Status
 from .runner import run
@@ -44,6 +45,7 @@ class Fingerprint:
     uid: int
     gid: int
     link_target: Optional[str] = None
+    cdhash: Optional[str] = None
 
 
 def _launchd_roots(home: Optional[str] = None, roots: Optional[Sequence[Path]] = None) -> List[Path]:
@@ -127,6 +129,7 @@ def fingerprint(asset: Asset) -> Optional[Fingerprint]:
                 digest.update(chunk)
     except (OSError, ValueError):
         return None
+    cdhash = signature_metadata(str(path)).cdhash if asset.kind == "loaded_macho" else None
     return Fingerprint(
         path=str(path),
         kind=asset.kind,
@@ -136,6 +139,7 @@ def fingerprint(asset: Asset) -> Optional[Fingerprint]:
         uid=metadata.st_uid,
         gid=metadata.st_gid,
         link_target=link_target,
+        cdhash=cdhash,
     )
 
 
@@ -234,6 +238,8 @@ def compare_entries(expected: List[Fingerprint], current: List[Fingerprint]) -> 
             field for field in ("sha256", "size", "mode", "uid", "gid", "link_target")
             if getattr(old, field) != getattr(new, field)
         ]
+        if old.cdhash is not None and old.cdhash != new.cdhash:
+            changed.append("cdhash")
         if changed:
             severity = Severity.CRITICAL if old.kind == "startup_executable" else Severity.HIGH
             findings.append(Finding(
@@ -242,6 +248,7 @@ def compare_entries(expected: List[Fingerprint], current: List[Fingerprint]) -> 
                 {
                     "path": old.path, "kind": old.kind, "changed": changed,
                     "expected_sha256": old.sha256, "current_sha256": new.sha256,
+                    "expected_cdhash": old.cdhash, "current_cdhash": new.cdhash,
                 },
             ))
     for key, new in current_by_key.items():
@@ -251,7 +258,7 @@ def compare_entries(expected: List[Fingerprint], current: List[Fingerprint]) -> 
         findings.append(Finding(
             "RAT-BASE-003", "New asset appeared after baseline", severity, "integrity",
             "A persistence entry or loaded code image was not present in the known-good baseline.",
-            {"path": new.path, "kind": new.kind, "sha256": new.sha256},
+            {"path": new.path, "kind": new.kind, "sha256": new.sha256, "cdhash": new.cdhash},
         ))
     return findings
 

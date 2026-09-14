@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from .behavior import ProcessInfo, suspicious_location, trusted_system_location
+from .behavior import ProcessInfo, is_app_translocated, suspicious_location, trusted_system_location
 from .model import Check, Finding, Severity, Status
 from .runner import run
 
@@ -39,6 +39,7 @@ class SignatureInfo:
     kind: str
     team_id: Optional[str] = None
     identifier: Optional[str] = None
+    cdhash: Optional[str] = None
 
 
 def parse_loaded_images(output: str) -> List[LoadedImage]:
@@ -96,11 +97,16 @@ def signature_metadata(path: str) -> SignatureInfo:
         kind = "signed"
     else:
         kind = "adhoc"
+    raw_cdhash = fields.get("CDHash", "").lower()
+    cdhash = raw_cdhash if len(raw_cdhash) in (40, 64) and all(
+        character in "0123456789abcdef" for character in raw_cdhash
+    ) else None
     return SignatureInfo(
         valid=bool(details and details.returncode == 0),
         kind=kind,
         team_id=fields.get("TeamIdentifier") if fields.get("TeamIdentifier") != "not set" else None,
         identifier=fields.get("Identifier"),
+        cdhash=cdhash,
     )
 
 
@@ -120,6 +126,7 @@ def signature_info(path: str) -> SignatureInfo:
         kind=metadata.kind,
         team_id=metadata.team_id,
         identifier=metadata.identifier,
+        cdhash=metadata.cdhash,
     )
 
 
@@ -187,7 +194,8 @@ def analyze_loaded_images(
         if not eligible:
             continue
         clean_path = image.path[:-10] if image.path.endswith(" (deleted)") else image.path
-        if posixpath.normpath(clean_path) == posixpath.normpath(host.executable):
+        translocated = is_app_translocated(clean_path) or is_app_translocated(host.executable)
+        if posixpath.normpath(clean_path) == posixpath.normpath(host.executable) and not translocated:
             continue
         if image.path.endswith(" (deleted)"):
             findings.append(Finding(
@@ -200,17 +208,20 @@ def analyze_loaded_images(
             continue
         host_bundle = _app_bundle_root(host.executable)
         image_bundle = _app_bundle_root(clean_path)
-        if host_bundle and image_bundle and host_bundle == image_bundle:
+        if (
+            host_bundle and image_bundle and host_bundle == image_bundle
+            and posixpath.normpath(clean_path) != posixpath.normpath(host.executable)
+        ):
             # Nested app frameworks are expected mappings. Detecting in-place
-            # tampering requires a persistent hash baseline, planned separately.
+            # tampering is handled by the persistent identity and hash baseline.
             continue
         reason = suspicious_location(clean_path, home)
         if not _plausible_code_path(clean_path, reason) or not is_macho(clean_path):
             continue
-        candidates.append((image, host, clean_path, reason))
+        candidates.append((image, host, clean_path, reason, translocated))
 
     signature_paths = sorted({
-        path for _image, host, module, _reason in candidates
+        path for _image, host, module, _reason, _translocated in candidates
         for path in (module, host.executable)
     })
     signatures: Dict[str, SignatureInfo] = {}
@@ -219,7 +230,7 @@ def analyze_loaded_images(
             signatures = dict(zip(signature_paths, executor.map(signature_metadata, signature_paths)))
 
     verification_paths = []
-    for _image, host, clean_path, reason in candidates:
+    for _image, host, clean_path, reason, _translocated in candidates:
         module_signature = signatures[clean_path]
         host_signature = signatures[host.executable]
         mismatched_team = bool(
@@ -234,7 +245,7 @@ def analyze_loaded_images(
         with ThreadPoolExecutor(max_workers=min(8, len(verification_paths))) as executor:
             verified = dict(zip(verification_paths, executor.map(verify_signature, verification_paths)))
 
-    for image, host, clean_path, reason in candidates:
+    for image, host, clean_path, reason, translocated in candidates:
         module_signature = signatures[clean_path]
         host_signature = signatures[host.executable]
         mismatched_team = bool(
@@ -245,15 +256,22 @@ def analyze_loaded_images(
             module_signature.kind in ("unsigned", "adhoc")
             or not verified.get(clean_path, True)
         )
-        if not reason and not invalid and not mismatched_team:
+        if not reason and not invalid and not mismatched_team and not translocated:
             continue
         severity = Severity.HIGH if invalid or mismatched_team else Severity.MEDIUM
+        rule_id = "RAT-INJECT-004" if translocated else "RAT-INJECT-003"
+        title = "Translocated executable code is active" if translocated else "Untrusted image loaded into a protected process"
+        message = (
+            "A protected process maps code from a randomized App Translocation path; verify its origin and install location."
+            if translocated else
+            "A protected process maps Mach-O code from a user-writable location."
+        )
         findings.append(Finding(
-            "RAT-INJECT-003",
-            "Untrusted image loaded into a protected process",
+            rule_id,
+            title,
             severity,
             "injection",
-            "A protected process maps Mach-O code from a user-writable location.",
+            message,
             {
                 "pid": image.pid,
                 "process": image.process,
@@ -262,9 +280,12 @@ def analyze_loaded_images(
                 "location_reason": reason,
                 "signature": module_signature.kind,
                 "signature_valid": verified.get(clean_path),
+                "module_cdhash": module_signature.cdhash,
+                "host_cdhash": host_signature.cdhash,
                 "module_team_id": module_signature.team_id,
                 "host_team_id": host_signature.team_id,
                 "team_mismatch": mismatched_team,
+                "app_translocated": translocated,
             },
         ))
     return findings, len(candidates)
@@ -280,9 +301,15 @@ def loaded_image_sensor(
         return Check("loaded_images", Status.UNKNOWN, "loaded-image inventory unavailable"), []
     images = parse_loaded_images(result.stdout)
     findings, inspected = analyze_loaded_images(images, processes, home)
+    translocated = sum(item.rule_id == "RAT-INJECT-004" for item in findings)
     return Check(
         "loaded_images",
         Status.HEALTHY,
         "file-backed executable mappings inspected",
-        {"mappings": len(images), "user_writable_candidates": inspected},
+        {
+            "mappings": len(images),
+            "user_writable_candidates": inspected,
+            "translocated_candidates": translocated,
+            "identity_fields": ["path", "cdhash", "team_id"],
+        },
     ), findings
