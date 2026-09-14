@@ -150,7 +150,7 @@ def inspect_launchd_file(path: Path, home: Optional[str] = None) -> List[Finding
     program = _program_from_plist(data)
     if not program:
         return findings
-    if not os.path.isabs(program):
+    if not posixpath.isabs(program):
         findings.append(Finding(
             "RAT-PERSIST-004", "Relative executable in launchd entry", Severity.HIGH, "persistence",
             "A launchd entry uses a relative executable path.",

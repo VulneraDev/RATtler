@@ -6,8 +6,8 @@ images, then asks the operating system to verify code signatures for candidates
 loaded from user-writable locations.
 """
 
-import os
 import platform
+import posixpath
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -124,10 +124,10 @@ def signature_info(path: str) -> SignatureInfo:
 
 
 def _user_writable_location(path: str, home: Optional[str]) -> bool:
-    user_home = os.path.normpath(os.path.abspath(home or str(Path.home())))
-    real_path = os.path.normpath(os.path.abspath(path))
+    user_home = posixpath.normpath(posixpath.abspath(home or str(Path.home())))
+    real_path = posixpath.normpath(posixpath.abspath(path))
     try:
-        if os.path.commonpath((real_path, user_home)) == user_home:
+        if posixpath.commonpath((real_path, user_home)) == user_home:
             return True
     except ValueError:
         pass
@@ -135,7 +135,7 @@ def _user_writable_location(path: str, home: Optional[str]) -> bool:
 
 
 def _eligible_host(path: str) -> bool:
-    name = os.path.basename(path).lower()
+    name = posixpath.basename(path).lower()
     interpreters = ("python", "ruby", "perl", "node", "java", "bash", "zsh", "sh", "osascript")
     if any(name == item or name.startswith(item) for item in interpreters):
         return False
@@ -165,7 +165,7 @@ def _app_bundle_root(path: str) -> Optional[str]:
     position = lowered.find(marker)
     if position < 0:
         return None
-    return os.path.normpath(path[:position + len(".app")])
+    return posixpath.normpath(path[:position + len(".app")])
 
 
 def analyze_loaded_images(
@@ -187,7 +187,7 @@ def analyze_loaded_images(
         if not eligible:
             continue
         clean_path = image.path[:-10] if image.path.endswith(" (deleted)") else image.path
-        if os.path.normpath(clean_path) == os.path.normpath(host.executable):
+        if posixpath.normpath(clean_path) == posixpath.normpath(host.executable):
             continue
         if image.path.endswith(" (deleted)"):
             findings.append(Finding(
