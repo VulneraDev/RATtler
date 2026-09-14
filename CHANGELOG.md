@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.13.2
+
+- Canonicalize Windows drive and UNC paths through the filesystem before
+  matching exact-identity exceptions, including short-path aliases
+- Preserve absolute POSIX endpoint paths when policies are processed on Windows
+- Surface compact Windows test tracebacks directly in GitHub check annotations
+
 ## 0.13.1
 
 - Normalize reviewed-exception paths with the endpoint's native path rules so

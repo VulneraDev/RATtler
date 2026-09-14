@@ -963,7 +963,7 @@
         @"recoveryError": @([[NSFileManager defaultManager] fileExistsAtPath:[self recoveryErrorURL].path]),
         @"installed": @(installed),
         @"appPath": appPath ?: @"",
-        @"version": @"0.13.1",
+        @"version": @"0.13.2",
     }
             function:@"receiveCapabilities"];
 }

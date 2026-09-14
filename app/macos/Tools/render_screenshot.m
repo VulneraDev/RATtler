@@ -54,7 +54,7 @@
         @"recoveryFrozen": @([self.viewID isEqualToString:@"ransomware"]),
         @"recoveryError": @NO,
         @"installed": @YES,
-        @"version": @"0.13.1",
+        @"version": @"0.13.2",
     } options:0 error:nil];
     NSData *ready = [NSJSONSerialization dataWithJSONObject:@{
         @"phase": @"ready",
