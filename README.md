@@ -42,6 +42,19 @@ Health, Activity, and Settings views. It supports one-click scans, automatic
 refresh, reviewed integrity baselines, local event history, and JSON report
 export.
 
+### Screenshots
+
+These documentation renders use deterministic synthetic endpoint data; no
+malicious software was installed to produce them.
+
+Healthy endpoint:
+
+![RATtler dashboard showing a healthy endpoint](docs/images/rattler-healthy.png)
+
+Risk detected (safe synthetic demo data):
+
+![RATtler dashboard showing critical, high, and medium risk findings](docs/images/rattler-risk.png)
+
 Build and open the development app:
 
 ```sh

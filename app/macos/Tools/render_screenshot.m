@@ -1,0 +1,127 @@
+#import <AppKit/AppKit.h>
+#import <WebKit/WebKit.h>
+
+@interface RATSnapshotter : NSObject <WKNavigationDelegate>
+@property(nonatomic, strong) NSWindow *window;
+@property(nonatomic, strong) WKWebView *webView;
+@property(nonatomic, strong) NSData *reportData;
+@property(nonatomic, strong) NSURL *outputURL;
+- (instancetype)initWithPage:(NSURL *)page report:(NSData *)report output:(NSURL *)output;
+- (void)start;
+@end
+
+@implementation RATSnapshotter
+
+- (instancetype)initWithPage:(NSURL *)page report:(NSData *)report output:(NSURL *)output {
+    self = [super init];
+    if (self) {
+        _reportData = report;
+        _outputURL = output;
+
+        WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
+        configuration.preferences.javaScriptCanOpenWindowsAutomatically = NO;
+        _webView = [[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 1180, 760)
+                                      configuration:configuration];
+        _webView.navigationDelegate = self;
+
+        _window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 1180, 760)
+                                             styleMask:NSWindowStyleMaskBorderless
+                                               backing:NSBackingStoreBuffered
+                                                 defer:NO];
+        _window.contentView = _webView;
+        _window.alphaValue = 0.01;
+        [_window orderBack:nil];
+
+        NSURL *directory = [page URLByDeletingLastPathComponent];
+        [_webView loadFileURL:page allowingReadAccessToURL:directory];
+    }
+    return self;
+}
+
+- (void)start {
+    [NSApp run];
+}
+
+- (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
+    (void)webView;
+    (void)navigation;
+    NSData *capabilities = [NSJSONSerialization dataWithJSONObject:@{
+        @"baseline": @YES,
+        @"nativeEvents": @YES,
+        @"version": @"0.7.0",
+    } options:0 error:nil];
+    NSData *ready = [NSJSONSerialization dataWithJSONObject:@{
+        @"phase": @"ready",
+        @"message": @"Scan completed",
+    } options:0 error:nil];
+    NSString *script = [NSString stringWithFormat:
+        @"window.RATtler.receiveCapabilities('%@');"
+         "window.RATtler.receiveReport('%@');"
+         "window.RATtler.receiveState('%@');",
+        [capabilities base64EncodedStringWithOptions:0],
+        [self.reportData base64EncodedStringWithOptions:0],
+        [ready base64EncodedStringWithOptions:0]];
+    [self.webView evaluateJavaScript:script completionHandler:^(id value, NSError *error) {
+        (void)value;
+        if (error != nil) {
+            [self finishWithError:error.localizedDescription];
+            return;
+        }
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            [self capture];
+        });
+    }];
+}
+
+- (void)capture {
+    WKSnapshotConfiguration *configuration = [[WKSnapshotConfiguration alloc] init];
+    configuration.rect = NSMakeRect(0, 0, 1180, 760);
+    configuration.snapshotWidth = @1180;
+    [self.webView takeSnapshotWithConfiguration:configuration
+                              completionHandler:^(NSImage *image, NSError *error) {
+        if (error != nil || image == nil) {
+            [self finishWithError:error.localizedDescription ?: @"WebKit returned no image"];
+            return;
+        }
+        NSData *tiff = image.TIFFRepresentation;
+        NSBitmapImageRep *bitmap = [NSBitmapImageRep imageRepWithData:tiff];
+        NSData *png = [bitmap representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+        NSError *writeError = nil;
+        if (png == nil || ![png writeToURL:self.outputURL options:NSDataWritingAtomic error:&writeError]) {
+            [self finishWithError:writeError.localizedDescription ?: @"Could not encode screenshot"];
+            return;
+        }
+        exit(0);
+    }];
+}
+
+- (void)finishWithError:(NSString *)message {
+    fprintf(stderr, "screenshot failed: %s\n", message.UTF8String);
+    exit(1);
+}
+
+@end
+
+static RATSnapshotter *g_snapshotter;
+
+int main(int argc, const char *argv[]) {
+    @autoreleasepool {
+        if (argc != 4) {
+            fprintf(stderr, "usage: render-screenshot PAGE REPORT OUTPUT\n");
+            return 2;
+        }
+        NSURL *page = [NSURL fileURLWithPath:@(argv[1])];
+        NSData *report = [NSData dataWithContentsOfFile:@(argv[2])];
+        NSURL *output = [NSURL fileURLWithPath:@(argv[3])];
+        if (report == nil) {
+            fprintf(stderr, "could not read report fixture\n");
+            return 2;
+        }
+        [NSApplication sharedApplication];
+        NSApp.activationPolicy = NSApplicationActivationPolicyProhibited;
+        g_snapshotter = [[RATSnapshotter alloc] initWithPage:page report:report output:output];
+        [g_snapshotter start];
+        return 0;
+    }
+}

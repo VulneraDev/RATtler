@@ -1,0 +1,55 @@
+{
+  "status": "unhealthy",
+  "observed_at": "2026-09-14T03:18:42Z",
+  "protection": {
+    "provider": "macos-built-in",
+    "hostname": "Studio-Mac",
+    "platform": "macOS",
+    "status": "healthy",
+    "checks": [
+      {"name": "gatekeeper", "status": "healthy", "message": "enabled", "details": {}},
+      {"name": "xprotect", "status": "healthy", "message": "installed and current", "details": {"version": "5290"}}
+    ]
+  },
+  "behavior": {
+    "sensors": [
+      {"name": "processes", "status": "healthy", "message": "413 processes inspected", "details": {"count": 413}},
+      {"name": "persistence", "status": "healthy", "message": "38 launchd entries inspected", "details": {"count": 38}},
+      {"name": "listeners", "status": "healthy", "message": "9 TCP listeners inspected", "details": {"count": 9}},
+      {"name": "loaded_images", "status": "healthy", "message": "2,184 executable mappings inspected", "details": {"mappings": 2184}},
+      {"name": "baseline", "status": "healthy", "message": "integrity baseline checked", "details": {"entries": 74}},
+      {"name": "native_events", "status": "healthy", "message": "3 native events ingested", "details": {"events": 3}}
+    ],
+    "findings": [
+      {
+        "rule_id": "RAT-NATIVE-006",
+        "title": "Task-port access followed by remote thread creation",
+        "severity": "critical",
+        "category": "injection",
+        "message": "A process obtained access to another task and created a thread inside it.",
+        "evidence": {"actor_pid": 731, "target_pid": 488, "actor_path": "/tmp/diagnostic-helper", "target_path": "/Applications/Notes.app/Contents/MacOS/Notes"}
+      },
+      {
+        "rule_id": "RAT-INJECT-003",
+        "title": "Untrusted image loaded into a protected process",
+        "severity": "high",
+        "category": "injection",
+        "message": "A protected process maps Mach-O code from a user-writable location.",
+        "evidence": {"host": "/Applications/Notes.app/Contents/MacOS/Notes", "image": "/tmp/diagnostic-plugin.dylib", "signature": "unsigned"}
+      },
+      {
+        "rule_id": "RAT-PROC-001",
+        "title": "Process launched from a risky location",
+        "severity": "medium",
+        "category": "process",
+        "message": "A running executable originates from a location frequently abused by droppers.",
+        "evidence": {"pid": 731, "executable": "/tmp/diagnostic-helper", "reason": "temporary directory"}
+      }
+    ],
+    "events": [
+      {"event_id": "demo-1", "event_type": "native_get_task", "severity": "high", "observed_at": "2026-09-14T03:18:39Z", "evidence": {"pid": 731, "target_pid": 488}},
+      {"event_id": "demo-2", "event_type": "native_remote_thread_create", "severity": "critical", "observed_at": "2026-09-14T03:18:40Z", "evidence": {"pid": 731, "target_pid": 488}},
+      {"event_id": "demo-3", "event_type": "loaded_image_added", "severity": "high", "observed_at": "2026-09-14T03:18:42Z", "evidence": {"pid": 488, "path": "/tmp/diagnostic-plugin.dylib"}}
+    ]
+  }
+}

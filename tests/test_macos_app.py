@@ -1,4 +1,6 @@
+import json
 import plistlib
+import struct
 import unittest
 from pathlib import Path
 
@@ -30,6 +32,18 @@ class MacOSAppSourceTests(unittest.TestCase):
         self.assertIn("NSTask", host)
         self.assertNotIn("/bin/sh", host)
         self.assertNotIn("system(", host)
+
+    def test_readme_screenshots_are_reproducible_pngs(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        for state in ("healthy", "risk"):
+            relative = "docs/images/rattler-%s.png" % state
+            image = (ROOT / relative).read_bytes()
+            self.assertIn(relative, readme)
+            self.assertEqual(image[:8], b"\x89PNG\r\n\x1a\n")
+            self.assertEqual(struct.unpack(">II", image[16:24]), (1180, 760))
+            with (ROOT / "docs/fixtures" / ("ui-%s.json" % state)).open() as handle:
+                report = json.load(handle)
+            self.assertIn(report["status"], {"healthy", "unhealthy"})
 
 
 if __name__ == "__main__":
