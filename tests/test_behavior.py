@@ -23,6 +23,13 @@ class FakeProvider(Provider):
         return [Check("av", Status.HEALTHY, "enabled")]
 
 
+class UnhealthyProvider(Provider):
+    name = "unhealthy"
+
+    def checks(self):
+        return [Check("av", Status.UNHEALTHY, "disabled")]
+
+
 class ProcessSensorTests(unittest.TestCase):
     def test_parses_process_inventory(self):
         result = parse_processes("  10 1 /usr/bin/safe\n20 10 /tmp/dropper\ninvalid")
@@ -74,6 +81,20 @@ class AssessmentTests(unittest.TestCase):
             findings=[Finding("RULE", "Suspicious", Severity.HIGH, "process", "reason")],
         )
         self.assertEqual(build_assessment(FakeProvider(), behavior).status, Status.UNHEALTHY)
+
+    def test_degraded_sensor_degrades_assessment(self):
+        behavior = BehaviorReport(
+            sensors=[Check("native_events", Status.DEGRADED, "backlog")],
+            findings=[],
+        )
+        self.assertEqual(build_assessment(FakeProvider(), behavior).status, Status.DEGRADED)
+
+    def test_unhealthy_protection_is_not_masked_by_medium_finding(self):
+        behavior = BehaviorReport(
+            sensors=[Check("processes", Status.HEALTHY, "ok")],
+            findings=[Finding("RULE", "Review", Severity.MEDIUM, "coverage", "reason")],
+        )
+        self.assertEqual(build_assessment(UnhealthyProvider(), behavior).status, Status.UNHEALTHY)
 
 
 if __name__ == "__main__":

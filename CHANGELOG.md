@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.0
+
+- Add a notification-only native macOS Endpoint Security collector
+- Capture process, memory, task-port, tracing, remote-thread, and code-signature events
+- Detect writable-executable memory and executable mappings from staging paths
+- Correlate task-port access followed by cross-process thread creation
+- Surface Endpoint Security sequence gaps as explicit coverage findings
+- Add rotation-aware, permission-restricted native JSONL cursor ingestion
+- Propagate degraded and unhealthy sensor coverage into the overall assessment
+- Compile the native sensor in macOS CI without requiring production entitlements
+
 ## 0.5.1
 
 - Add a self-cleaning, loopback-only macOS validation canary

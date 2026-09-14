@@ -10,6 +10,7 @@ from .baseline import check_baseline, create_baseline
 from .behavior import scan_behavior
 from .events import update_events
 from .model import Assessment, BehaviorReport, Status
+from .native_bridge import ingest_native_events
 from .providers import select_provider
 
 
@@ -37,6 +38,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--journal", metavar="PATH", help="append events as permission-restricted JSONL")
     parser.add_argument("--journal-max-bytes", type=int, default=10485760, help="rotate journal above this size")
     parser.add_argument("--event-window", type=int, default=900, help="correlation window in seconds")
+    parser.add_argument("--native-events", metavar="PATH", help="ingest native Endpoint Security JSONL")
     return parser
 
 
@@ -54,6 +56,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         _parser().error("--journal-max-bytes must be greater than zero")
     if args.journal and not args.state:
         _parser().error("--journal requires --state")
+    if args.native_events and not args.state:
+        _parser().error("--native-events requires --state")
     if args.create_baseline:
         if args.watch:
             _parser().error("--create-baseline cannot be combined with --watch")
@@ -86,6 +90,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     sensors=behavior.sensors + [event_check],
                     findings=behavior.findings + event_findings,
                     events=behavior.events + events,
+                )
+            if args.native_events:
+                cursor_path = Path(str(args.state) + ".native-cursor")
+                native_check, native_events, native_findings = ingest_native_events(
+                    Path(args.native_events), cursor_path,
+                    Path(args.journal) if args.journal else None,
+                    args.event_window, args.journal_max_bytes,
+                )
+                behavior = BehaviorReport(
+                    sensors=behavior.sensors + [native_check],
+                    findings=behavior.findings + native_findings,
+                    events=behavior.events + native_events,
                 )
             report = build_assessment(provider, behavior)
             fingerprint = json.dumps(
