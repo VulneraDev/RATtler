@@ -25,7 +25,8 @@ EXIT_CODES = {
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="rattler",
-        description="Read-only anti-RAT and endpoint protection watcher.",
+        description="Anti-RAT endpoint monitoring and explicit response tooling.",
+        epilog="Use 'rattler response --help' for reversible quarantine commands.",
     )
     parser.add_argument("--watch", action="store_true", help="run until interrupted")
     parser.add_argument("--interval", type=float, default=60.0, help="seconds between checks")
@@ -47,7 +48,12 @@ def _emit(report: Assessment, pretty: bool) -> None:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    args = _parser().parse_args(argv)
+    raw_arguments = list(argv) if argv is not None else sys.argv[1:]
+    if raw_arguments and raw_arguments[0] == "response":
+        from .response_cli import main as response_main
+
+        return response_main(raw_arguments[1:])
+    args = _parser().parse_args(raw_arguments)
     if args.interval <= 0:
         _parser().error("--interval must be greater than zero")
     if args.event_window <= 0:

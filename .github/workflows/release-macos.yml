@@ -54,4 +54,4 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --title "RATtler $GITHUB_REF_NAME Community Preview" \
             --prerelease \
-            --notes "Ad-hoc signed, non-notarized macOS Community Preview. Includes local behavioral scanning, integrity baselines, event correlation, findings, sensor health, activity history, and report export. Endpoint Security live telemetry remains entitlement-dependent."
+            --notes "Ad-hoc signed, non-notarized macOS Community Preview. Includes local behavioral scanning, integrity baselines, event correlation, findings, sensor health, activity history, report export, and reviewed reversible file quarantine. Execution prevention and live Endpoint Security telemetry remain entitlement-dependent."

@@ -41,7 +41,7 @@
       </nav>
       <div class="sidebar-status">
         <span id="sidebar-dot" class="status-dot unknown"></span>
-        <div><strong id="sidebar-label">Awaiting scan</strong><small>Community Preview <span id="app-version">0.7.0</span></small></div>
+        <div><strong id="sidebar-label">Awaiting scan</strong><small>Community Preview <span id="app-version">0.8.0</span></small></div>
       </div>
     </aside>
 
@@ -103,8 +103,17 @@
               <div class="divider"></div>
               <div class="setting-row"><span class="setting-icon">⌁</span><div><strong>No cloud connection</strong><p>RATtler contains no telemetry upload or remote-control service.</p></div><span class="local-badge">LOCAL ONLY</span></div>
             </article>
+            <article class="panel settings-panel">
+              <h3>Response</h3>
+              <div class="setting-row"><span class="setting-icon">◇</span><div><strong>Reviewed quarantine</strong><p>Files move only after an exact-hash check and native confirmation. Running processes are not terminated.</p></div><span class="local-badge">MANUAL</span></div>
+              <div class="divider"></div>
+              <div class="setting-row"><span class="setting-icon">▣</span><div><strong>Reversible evidence store</strong><p>Each action retains the payload, manifest, original path, and local audit record.</p></div><button id="quarantine-folder-button" class="quiet-button">Show quarantine</button></div>
+              <div class="divider"></div>
+              <div class="quarantine-heading"><div><strong>Quarantined files</strong><p>Restore is integrity-checked and never overwrites an existing file.</p></div><button id="quarantine-refresh-button" class="quiet-button">Refresh</button></div>
+              <div id="quarantine-list" class="quarantine-list"><span>Open Settings to load the local inventory.</span></div>
+            </article>
             <div id="native-settings"></div>
-            <div class="notice warning"><span>△</span><div><strong>Community Preview</strong><p>RATtler provides indicators for investigation. It does not quarantine files, block execution, or replace a supported antivirus/EDR product.</p></div></div>
+            <div class="notice warning"><span>△</span><div><strong>Community Preview</strong><p>RATtler can manually quarantine a reviewed file. It does not yet terminate processes, block execution, or replace a supported antivirus/EDR product.</p></div></div>
           </div>
         </section>
       </div>

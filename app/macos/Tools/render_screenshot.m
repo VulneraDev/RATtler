@@ -48,14 +48,15 @@
     NSData *capabilities = [NSJSONSerialization dataWithJSONObject:@{
         @"baseline": @YES,
         @"nativeEvents": @YES,
-        @"version": @"0.7.0",
+        @"version": @"0.8.0",
     } options:0 error:nil];
     NSData *ready = [NSJSONSerialization dataWithJSONObject:@{
         @"phase": @"ready",
         @"message": @"Scan completed",
     } options:0 error:nil];
     NSString *script = [NSString stringWithFormat:
-        @"window.RATtler.receiveCapabilities('%@');"
+        @"document.documentElement.classList.add('snapshot');"
+         "window.RATtler.receiveCapabilities('%@');"
          "window.RATtler.receiveReport('%@');"
          "window.RATtler.receiveState('%@');",
         [capabilities base64EncodedStringWithOptions:0],
@@ -67,10 +68,24 @@
             [self finishWithError:error.localizedDescription];
             return;
         }
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{
-            [self capture];
-        });
+        NSString *diagnostic = @"JSON.stringify({children:document.querySelector('#dashboard-content').childElementCount,toast:document.querySelector('#toast p').textContent,opacity:getComputedStyle(document.querySelector('#dashboard')).opacity})";
+        [self.webView evaluateJavaScript:diagnostic completionHandler:^(id result, NSError *diagnosticError) {
+            if (diagnosticError != nil || ![result isKindOfClass:[NSString class]]) {
+                [self finishWithError:diagnosticError.localizedDescription ?: @"Could not validate the rendered interface"];
+                return;
+            }
+            NSData *data = [(NSString *)result dataUsingEncoding:NSUTF8StringEncoding];
+            NSDictionary *state = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+            if ([state[@"children"] integerValue] == 0 || [state[@"opacity"] doubleValue] == 0) {
+                NSString *toast = [state[@"toast"] isKindOfClass:[NSString class]] ? state[@"toast"] : @"";
+                [self finishWithError:[NSString stringWithFormat:@"Interface did not render. %@", toast]];
+                return;
+            }
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{
+                [self capture];
+            });
+        }];
     }];
 }
 

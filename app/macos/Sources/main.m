@@ -9,6 +9,8 @@
 @property(nonatomic, strong) WKWebView *webView;
 @property(nonatomic, strong) NSData *lastReport;
 @property(nonatomic, assign) BOOL scanning;
+- (NSString *)responseErrorFromResult:(NSDictionary *)result fallback:(NSString *)fallback;
+- (BOOL)isValidSHA256:(NSString *)digest;
 @end
 
 @implementation RATAppDelegate
@@ -101,6 +103,24 @@
     } else if ([action isEqualToString:@"reveal"]) {
         NSURL *directory = [self applicationDataDirectory];
         [[NSWorkspace sharedWorkspace] activateFileViewerSelectingURLs:@[directory]];
+    } else if ([action isEqualToString:@"revealQuarantine"]) {
+        NSURL *directory = [[self applicationDataDirectory] URLByAppendingPathComponent:@"quarantine"
+                                                                              isDirectory:YES];
+        [[NSFileManager defaultManager] createDirectoryAtURL:directory
+                                 withIntermediateDirectories:YES
+                                                  attributes:@{NSFilePosixPermissions: @0700}
+                                                       error:nil];
+        chmod(directory.fileSystemRepresentation, 0700);
+        [[NSWorkspace sharedWorkspace] activateFileViewerSelectingURLs:@[directory]];
+    } else if ([action isEqualToString:@"quarantine"]) {
+        NSString *path = ((NSDictionary *)message.body)[@"path"];
+        NSString *ruleID = ((NSDictionary *)message.body)[@"ruleId"];
+        [self planQuarantinePath:path ruleID:ruleID];
+    } else if ([action isEqualToString:@"listQuarantine"]) {
+        [self listQuarantine];
+    } else if ([action isEqualToString:@"restore"]) {
+        NSString *identifier = ((NSDictionary *)message.body)[@"id"];
+        [self planRestoreIdentifier:identifier];
     } else if ([action isEqualToString:@"capabilities"]) {
         [self sendCapabilities];
     }
@@ -190,6 +210,224 @@
     });
 }
 
+- (void)planQuarantinePath:(NSString *)path ruleID:(NSString *)ruleID {
+    if (self.scanning) return;
+    if (![path isKindOfClass:[NSString class]] || !path.isAbsolutePath || path.length > 4096) {
+        [self sendObject:@{@"phase": @"error", @"message": @"The finding does not contain a safe absolute file path."}
+                function:@"receiveState"];
+        return;
+    }
+    NSString *reason = [ruleID isKindOfClass:[NSString class]] && ruleID.length > 0 && ruleID.length < 128
+        ? [NSString stringWithFormat:@"RATtler finding %@", ruleID]
+        : @"RATtler operator review";
+    NSString *store = [[[self applicationDataDirectory] URLByAppendingPathComponent:@"quarantine"
+                                                                          isDirectory:YES] path];
+    NSArray<NSString *> *planArguments = @[
+        @"response", @"quarantine", path,
+        @"--reason", reason, @"--store", store, @"--pretty",
+    ];
+    self.scanning = YES;
+    [self sendObject:@{@"phase": @"scanning", @"message": @"Verifying the exact file before response…"}
+            function:@"receiveState"];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSDictionary *result = [self runEngineArguments:planArguments];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSError *jsonError = nil;
+            NSData *output = result[@"output"];
+            NSDictionary *plan = output.length
+                ? [NSJSONSerialization JSONObjectWithData:output options:0 error:&jsonError]
+                : nil;
+            NSString *digest = [plan isKindOfClass:[NSDictionary class]] ? plan[@"sha256"] : nil;
+            NSString *plannedTarget = [plan[@"target"] isKindOfClass:[NSString class]] ? plan[@"target"] : nil;
+            if ([result[@"status"] intValue] != 0 || ![self isValidSHA256:digest] ||
+                !plannedTarget.isAbsolutePath) {
+                self.scanning = NO;
+                NSString *detail = [self responseErrorFromResult:result
+                                                        fallback:jsonError.localizedDescription ?: @"The response plan could not be verified."];
+                [self sendObject:@{@"phase": @"error", @"message": detail}
+                        function:@"receiveState"];
+                return;
+            }
+
+            NSAlert *alert = [[NSAlert alloc] init];
+            alert.messageText = @"Quarantine this exact file?";
+            alert.informativeText = [NSString stringWithFormat:
+                @"RATtler will move this file into protected local storage and remove its execute permission. "
+                 "This does not stop an already-running process.\n\nPath: %@\nSHA-256: %@",
+                plannedTarget, digest];
+            alert.alertStyle = NSAlertStyleWarning;
+            [alert addButtonWithTitle:@"Quarantine File"];
+            [alert addButtonWithTitle:@"Cancel"];
+            if ([alert runModal] != NSAlertFirstButtonReturn) {
+                self.scanning = NO;
+                [self sendObject:@{@"phase": @"ready", @"message": @"Quarantine cancelled"}
+                        function:@"receiveState"];
+                return;
+            }
+
+            NSArray<NSString *> *applyArguments = @[
+                @"response", @"quarantine", path,
+                @"--reason", reason, @"--store", store,
+                @"--expected-sha256", digest, @"--apply", @"--pretty",
+            ];
+            [self sendObject:@{@"phase": @"scanning", @"message": @"Applying reviewed quarantine…"}
+                    function:@"receiveState"];
+            dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+                NSDictionary *appliedResult = [self runEngineArguments:applyArguments];
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    self.scanning = NO;
+                    NSError *applyJSONError = nil;
+                    NSData *appliedOutput = appliedResult[@"output"];
+                    NSDictionary *applied = appliedOutput.length
+                        ? [NSJSONSerialization JSONObjectWithData:appliedOutput options:0 error:&applyJSONError]
+                        : nil;
+                    if ([appliedResult[@"status"] intValue] == 0 && [applied[@"applied"] boolValue]) {
+                        NSString *identifier = [applied[@"id"] isKindOfClass:[NSString class]] ? applied[@"id"] : @"unknown";
+                        [self sendObject:@{
+                            @"success": @YES,
+                            @"message": [NSString stringWithFormat:@"File quarantined. Restore ID: %@", identifier],
+                        } function:@"receiveResponse"];
+                        [self sendObject:@{@"phase": @"ready", @"message": @"Reviewed quarantine completed"}
+                                function:@"receiveState"];
+                        [self listQuarantine];
+                        [self startScan];
+                    } else {
+                        NSString *detail = [self responseErrorFromResult:appliedResult
+                                                                fallback:applyJSONError.localizedDescription ?: @"The reviewed quarantine was refused."];
+                        [self sendObject:@{@"phase": @"error", @"message": detail}
+                                function:@"receiveState"];
+                    }
+                });
+            });
+        });
+    });
+}
+
+- (NSString *)responseErrorFromResult:(NSDictionary *)result fallback:(NSString *)fallback {
+    NSString *message = [result[@"error"] isKindOfClass:[NSString class]] ? result[@"error"] : @"";
+    NSData *data = [message dataUsingEncoding:NSUTF8StringEncoding];
+    NSDictionary *document = data.length
+        ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil]
+        : nil;
+    NSString *detail = [document isKindOfClass:[NSDictionary class]] ? document[@"detail"] : nil;
+    return [detail isKindOfClass:[NSString class]] && detail.length > 0
+        ? detail
+        : (message.length > 0 ? message : fallback);
+}
+
+- (BOOL)isValidSHA256:(NSString *)digest {
+    if (![digest isKindOfClass:[NSString class]] || digest.length != 64) return NO;
+    NSCharacterSet *allowed = [NSCharacterSet characterSetWithCharactersInString:@"0123456789abcdef"];
+    return [digest rangeOfCharacterFromSet:allowed.invertedSet].location == NSNotFound;
+}
+
+- (BOOL)isValidEntryIdentifier:(NSString *)identifier {
+    if (![identifier isKindOfClass:[NSString class]] || identifier.length != 32) return NO;
+    NSCharacterSet *allowed = [NSCharacterSet characterSetWithCharactersInString:@"0123456789abcdef"];
+    return [identifier rangeOfCharacterFromSet:allowed.invertedSet].location == NSNotFound;
+}
+
+- (void)listQuarantine {
+    NSString *store = [[[self applicationDataDirectory] URLByAppendingPathComponent:@"quarantine"
+                                                                          isDirectory:YES] path];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        NSDictionary *result = [self runEngineArguments:@[
+            @"response", @"list", @"--store", store, @"--pretty",
+        ]];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSData *output = result[@"output"];
+            NSDictionary *listing = output.length
+                ? [NSJSONSerialization JSONObjectWithData:output options:0 error:nil]
+                : nil;
+            if ([result[@"status"] intValue] == 0 && [listing[@"entries"] isKindOfClass:[NSArray class]]) {
+                [self sendObject:@{@"entries": listing[@"entries"]} function:@"receiveResponse"];
+            } else {
+                NSString *detail = [self responseErrorFromResult:result
+                                                        fallback:@"The quarantine inventory could not be read."];
+                [self sendObject:@{@"phase": @"error", @"message": detail} function:@"receiveState"];
+            }
+        });
+    });
+}
+
+- (void)planRestoreIdentifier:(NSString *)identifier {
+    if (self.scanning) return;
+    if (![self isValidEntryIdentifier:identifier]) {
+        [self sendObject:@{@"phase": @"error", @"message": @"The quarantine entry ID is invalid."}
+                function:@"receiveState"];
+        return;
+    }
+    NSString *store = [[[self applicationDataDirectory] URLByAppendingPathComponent:@"quarantine"
+                                                                          isDirectory:YES] path];
+    self.scanning = YES;
+    [self sendObject:@{@"phase": @"scanning", @"message": @"Verifying quarantined file integrity…"}
+            function:@"receiveState"];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSDictionary *result = [self runEngineArguments:@[
+            @"response", @"restore", identifier, @"--store", store, @"--pretty",
+        ]];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSData *output = result[@"output"];
+            NSDictionary *plan = output.length
+                ? [NSJSONSerialization JSONObjectWithData:output options:0 error:nil]
+                : nil;
+            NSString *target = [plan[@"target"] isKindOfClass:[NSString class]] ? plan[@"target"] : nil;
+            NSString *digest = [plan[@"sha256"] isKindOfClass:[NSString class]] ? plan[@"sha256"] : nil;
+            if ([result[@"status"] intValue] != 0 || !target.isAbsolutePath ||
+                ![self isValidSHA256:digest]) {
+                self.scanning = NO;
+                NSString *detail = [self responseErrorFromResult:result
+                                                        fallback:@"The restore plan could not be verified."];
+                [self sendObject:@{@"phase": @"error", @"message": detail} function:@"receiveState"];
+                return;
+            }
+
+            NSAlert *alert = [[NSAlert alloc] init];
+            alert.messageText = @"Restore this quarantined file?";
+            alert.informativeText = [NSString stringWithFormat:
+                @"RATtler verified the stored payload and will restore it only if the destination remains empty.\n\nPath: %@\nSHA-256: %@",
+                target, digest];
+            alert.alertStyle = NSAlertStyleWarning;
+            [alert addButtonWithTitle:@"Restore File"];
+            [alert addButtonWithTitle:@"Cancel"];
+            if ([alert runModal] != NSAlertFirstButtonReturn) {
+                self.scanning = NO;
+                [self sendObject:@{@"phase": @"ready", @"message": @"Restore cancelled"}
+                        function:@"receiveState"];
+                return;
+            }
+
+            [self sendObject:@{@"phase": @"scanning", @"message": @"Applying reviewed restore…"}
+                    function:@"receiveState"];
+            dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+                NSDictionary *appliedResult = [self runEngineArguments:@[
+                    @"response", @"restore", identifier, @"--store", store, @"--apply", @"--pretty",
+                ]];
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    self.scanning = NO;
+                    NSData *appliedOutput = appliedResult[@"output"];
+                    NSDictionary *applied = appliedOutput.length
+                        ? [NSJSONSerialization JSONObjectWithData:appliedOutput options:0 error:nil]
+                        : nil;
+                    if ([appliedResult[@"status"] intValue] == 0 && [applied[@"applied"] boolValue]) {
+                        [self sendObject:@{@"success": @YES, @"message": @"File restored to its original path."}
+                                function:@"receiveResponse"];
+                        [self sendObject:@{@"phase": @"ready", @"message": @"Reviewed restore completed"}
+                                function:@"receiveState"];
+                        [self listQuarantine];
+                        [self startScan];
+                    } else {
+                        NSString *detail = [self responseErrorFromResult:appliedResult
+                                                                fallback:@"The reviewed restore was refused."];
+                        [self sendObject:@{@"phase": @"error", @"message": detail}
+                                function:@"receiveState"];
+                    }
+                });
+            });
+        });
+    });
+}
+
 - (NSDictionary *)runEngineArguments:(NSArray<NSString *> *)arguments {
     NSURL *engine = [[NSBundle mainBundle] URLForResource:@"rattler-engine"
                                             withExtension:nil
@@ -261,7 +499,7 @@
     NSURL *directory = [self applicationDataDirectory];
     BOOL baseline = [[NSFileManager defaultManager] fileExistsAtPath:[[directory URLByAppendingPathComponent:@"baseline.json"] path]];
     BOOL nativeEvents = [[NSFileManager defaultManager] fileExistsAtPath:[[directory URLByAppendingPathComponent:@"native-events.jsonl"] path]];
-    [self sendObject:@{@"baseline": @(baseline), @"nativeEvents": @(nativeEvents), @"version": @"0.7.0"}
+    [self sendObject:@{@"baseline": @(baseline), @"nativeEvents": @(nativeEvents), @"version": @"0.8.0"}
             function:@"receiveCapabilities"];
 }
 

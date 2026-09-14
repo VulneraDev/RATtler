@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.0
+
+- Add reviewed, reversible file quarantine to the CLI and native macOS app
+- Require an exact SHA-256 from a dry run before applying a quarantine action
+- Refuse symbolic links, hard links, non-regular files, protected OS paths,
+  changed targets, destination collisions, and cross-filesystem moves
+- Remove execute permissions while retaining the payload, manifest, original
+  mode and path, operator reason, and append-oriented local audit events
+- Add integrity-checked restore and quarantine inventory commands
+- Add response controls to eligible findings with a native confirmation dialog
+- Document the staged prevention, tamper-resistance, and fleet-response roadmap
+
 ## 0.7.0
 
 - Add a native macOS Community Preview application with a polished local UI

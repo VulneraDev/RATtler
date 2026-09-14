@@ -74,8 +74,8 @@ iconutil -c icns "$iconset" -o "$app_bundle/Contents/Resources/RATtlerIcon.icns"
 codesign --force --deep --sign - "$app_bundle"
 
 if $archive; then
-    zip_artifact="$build_root/RATtler-0.7.0-macOS-$architecture.zip"
-    checksum_artifact="$build_root/RATtler-0.7.0-macOS-$architecture.sha256"
+    zip_artifact="$build_root/RATtler-0.8.0-macOS-$architecture.zip"
+    checksum_artifact="$build_root/RATtler-0.8.0-macOS-$architecture.sha256"
     ditto -c -k --norsrc --noextattr --noqtn --noacl --keepParent "$app_bundle" "$zip_artifact"
     (
         cd "$build_root"

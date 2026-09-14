@@ -14,7 +14,8 @@ class MacOSAppSourceTests(unittest.TestCase):
         with (APP / "Info.plist").open("rb") as handle:
             info = plistlib.load(handle)
         self.assertEqual(info["CFBundleIdentifier"], "dev.vulnera.rattler")
-        self.assertEqual(info["CFBundleShortVersionString"], "0.7.0")
+        self.assertEqual(info["CFBundleShortVersionString"], "0.8.0")
+        self.assertEqual(info["CFBundleVersion"], "8")
         self.assertEqual(info["LSMinimumSystemVersion"], "13.0")
         self.assertTrue(info["LSMultipleInstancesProhibited"])
 
@@ -24,8 +25,17 @@ class MacOSAppSourceTests(unittest.TestCase):
         self.assertIn("connect-src 'none'", html)
         for view in ("dashboard", "findings", "sensors", "activity", "settings"):
             self.assertIn('id="%s"' % view, html)
-        for handler in ("receiveReport", "receiveCapabilities", "receiveState"):
+        for handler in ("receiveReport", "receiveCapabilities", "receiveState", "receiveResponse"):
             self.assertIn(handler, script)
+
+    def test_quarantine_requires_native_review_and_exact_hash(self):
+        host = (APP / "Sources/main.m").read_text(encoding="utf-8")
+        self.assertIn('alert.messageText = @"Quarantine this exact file?"', host)
+        self.assertIn('@"--expected-sha256", digest, @"--apply"', host)
+        self.assertIn('@"response", @"quarantine", path', host)
+        self.assertIn('if ([alert runModal] != NSAlertFirstButtonReturn)', host)
+        self.assertIn('alert.messageText = @"Restore this quarantined file?"', host)
+        self.assertIn('@"response", @"restore", identifier', host)
 
     def test_native_host_does_not_invoke_a_shell(self):
         host = (APP / "Sources/main.m").read_text(encoding="utf-8")

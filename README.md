@@ -1,9 +1,9 @@
 # RATtler
 
-RATtler is an open-source, read-only anti-RAT endpoint monitor. It combines native
-antivirus health with explainable behavioral checks for suspicious process
-locations, launchd persistence and preload injection, and exposed TCP listeners.
-RATtler does not upload endpoint data.
+RATtler is an open-source anti-RAT endpoint monitor with reviewed local
+response. It combines native antivirus health with explainable behavioral checks
+for suspicious process locations, launchd persistence and preload injection, and
+exposed TCP listeners. RATtler does not upload endpoint data.
 
 Supported checks:
 
@@ -22,8 +22,10 @@ Behavioral sensors in the current macOS-first build:
 - Native process, memory, task-port, tracing, and remote-thread telemetry when the
   optional macOS Endpoint Security sensor is provisioned
 
-Findings are indicators for review, not malware verdicts. RATtler never kills a
-process, deletes a file, or changes a persistence entry.
+Findings are indicators for review, not malware verdicts. RATtler never deletes
+a file and does not automatically kill processes or alter persistence. An
+operator can manually quarantine one reviewed file; RATtler never applies that
+action automatically.
 
 ## Quick start
 
@@ -37,10 +39,10 @@ rattler --watch --interval 30 --changes-only
 
 ## macOS desktop app
 
-RATtler 0.7 includes a native Community Preview with Dashboard, Findings, Sensor
+RATtler 0.8 includes a native Community Preview with Dashboard, Findings, Sensor
 Health, Activity, and Settings views. It supports one-click scans, automatic
 refresh, reviewed integrity baselines, local event history, and JSON report
-export.
+export. Eligible file-backed findings also offer a reviewed quarantine action.
 
 ### Screenshots
 
@@ -156,6 +158,38 @@ For a production deployment, place the event log in a root-controlled directory
 and grant a dedicated reader only the minimum access it needs; the home-directory
 commands above are for local evaluation.
 
+## Reviewed quarantine
+
+RATtler 0.8 can move one exact regular file into a private local evidence store.
+The first command is a dry run; applying the action requires its SHA-256 so a
+changed path cannot be moved under an earlier approval:
+
+```sh
+rattler response quarantine /absolute/path/to/file \
+  --reason "RATtler finding review" --pretty
+rattler response quarantine /absolute/path/to/file \
+  --reason "RATtler finding review" \
+  --expected-sha256 <sha256-from-dry-run> --apply --pretty
+rattler response list --pretty
+```
+
+Restores are also reviewed before they are applied:
+
+```sh
+rattler response restore <entry-id> --pretty
+rattler response restore <entry-id> --apply --pretty
+```
+
+The default CLI store is `~/.rattler/quarantine`; the desktop app uses
+`~/Library/Application Support/RATtler/quarantine`. Payloads lose execute
+permissions while quarantined. Manifests retain the original path and mode, and
+`audit.jsonl` records quarantine and restore events. RATtler refuses links,
+non-regular files, protected operating-system paths, files already inside the
+store, cross-filesystem moves, hash changes, and restore collisions. Quarantine
+does not stop a process that is already running. The store is
+permission-restricted, but it is not tamper-proof against code already running
+as the same user.
+
 ## Safe validation canary
 
 `tools/safe_canary.py` locally compiles a tiny helper and emulates three RAT
@@ -189,8 +223,9 @@ findings, and an overall status. One-shot exit codes are `0` healthy, `1`
 degraded, `2` unknown, and `3` unhealthy. `Ctrl-C` returns `130` in watch mode.
 
 RATtler executes only fixed command argument lists, never a shell, and has no
-network code. Run the Python scanner as a normal user. Only the separately
-provisioned native Endpoint Security collector requires root.
+network code. Run the Python scanner and response commands as a normal user.
+Only the separately provisioned native Endpoint Security collector requires
+root.
 
 ## Development
 
@@ -209,10 +244,13 @@ This is an alpha anti-RAT foundation, not a replacement for antivirus/EDR. The
 behavioral sensors are macOS-first; Windows and Linux currently receive antivirus
 health plus the portable process/listener checks. Loaded-image inspection covers
 file-backed Mach-O mappings visible to the current user. The optional native
-sensor adds memory-permission and cross-process activity telemetry, but it remains
-detection-only and does not inspect memory contents. Kernel-level tampering,
-prevention, quarantine, and fleet response remain future work. Validate RATtler
-against the endpoint images you operate before alerting.
+sensor adds memory-permission and cross-process activity telemetry, but it
+remains detection-only and does not inspect memory contents. Manual, reversible
+file quarantine is available in 0.8. Endpoint Security authorization, signed
+system-extension self-protection, and fleet response are staged in the
+[response roadmap](docs/ROADMAP.md); they are not claimed as finished. Validate
+RATtler against the endpoint images you operate before alerting or enabling
+future enforcement.
 
 Contributions are welcome under the MIT license. See
 [`CONTRIBUTING.md`](CONTRIBUTING.md).

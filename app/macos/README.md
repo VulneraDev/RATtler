@@ -1,8 +1,9 @@
 # RATtler for macOS
 
 RATtler Community Preview is a native AppKit application with a local WebKit
-interface. It runs the open-source RATtler engine as a child process and renders
-its structured report without uploading endpoint data.
+interface. It runs the open-source RATtler engine as a child process, renders
+its structured report, and offers explicit local quarantine for eligible
+file-backed findings without uploading endpoint data.
 
 ## Development build
 
@@ -41,4 +42,8 @@ macOS runners.
 
 The app writes mode-`0600` state, journals, baselines, and reports beneath
 `~/Library/Application Support/RATtler`. Its WebKit view has a restrictive
-content-security policy and never loads remote application code.
+content-security policy and never loads remote application code. A quarantine
+action first computes the file's SHA-256, shows the exact path and digest in a
+native confirmation, and only then repeats the request with that digest. The
+engine refuses changed files and keeps a reversible local manifest and audit
+trail beneath `Application Support/RATtler/quarantine`.
