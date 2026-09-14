@@ -11,8 +11,8 @@ the computer unless you export a report yourself.
 
 Download **one ZIP**—not both:
 
-- [Mac with an Apple chip](https://github.com/VulneraDev/RATtler/releases/download/v0.12.0/RATtler-macOS-Apple-Silicon.zip)
-- [Mac with an Intel processor](https://github.com/VulneraDev/RATtler/releases/download/v0.12.0/RATtler-macOS-Intel.zip)
+- [Mac with an Apple chip](https://github.com/VulneraDev/RATtler/releases/download/v0.13.0/RATtler-macOS-Apple-Silicon.zip)
+- [Mac with an Intel processor](https://github.com/VulneraDev/RATtler/releases/download/v0.13.0/RATtler-macOS-Intel.zip)
 
 Not sure which Mac you have? Open **Apple menu → About This Mac**:
 
@@ -48,6 +48,23 @@ RATtler scans automatically when it opens. You can also click **Scan now**.
 If RATtler says it is running from Downloads, close it, drag it into
 **Applications**, and reopen it there. RATtler excludes its exact app and
 scan-engine process IDs so it does not flag itself.
+
+## Deep Scan
+
+Open **Deep Scan**, choose one file or folder, and review the result. This is a
+content scan: RATtler reads only the files you selected, locally, to calculate
+SHA-256, apply the bundled YARA rules, inspect Mach-O signing identity, and
+explain suspicious static traits. Nothing is uploaded.
+
+Scans are capped at 2,000 files, 64 MiB per file, 512 MiB total, and 120
+seconds. Symbolic links are not followed. A rule match is review evidence, not
+a malware verdict; the result shows the exact rule source and SHA-256 so it can
+be reproduced.
+Eligible results can be ignored for 30 days only by binding the exception to
+that exact rule, path, and file hash, or sent through RATtler's reviewed manual
+quarantine flow.
+
+![RATtler Deep Scan showing explainable local file findings](docs/images/rattler-deep-scan.png)
 
 ## BluePulse
 
@@ -111,6 +128,8 @@ Risk detected:
 - TCP services exposed on every network interface
 - Deleted or untrusted Mach-O code loaded into protected processes
 - Code-signing, Team ID, and CDHash identity changes
+- Selected files and folders with bundled YARA rules, SHA-256, Mach-O signing,
+  disguised executable names, and high-entropy executable context
 - Snapshot process ancestry with start-time identities that resist ordinary PID
   reuse during event correlation
 - Executable code running from randomized App Translocation paths
@@ -158,6 +177,8 @@ of the future signed system-extension milestone.
   and CDHashes so a finding can be investigated without guessing code identity.
 - RATtler never quarantines automatically.
 - The current Endpoint Security collector is detection-only.
+- Deep Scan reads the contents of only the file or folder an operator selects;
+  it is bounded, stays local, and does not follow symbolic links.
 - Ransomware monitoring records file paths, size, modification time, and inode
   locally; it does not inspect protected-file contents.
 - Recovery Vault reads eligible document and photo contents only after explicit
@@ -176,19 +197,21 @@ only if you also want to remove reports, baselines, and quarantined files.
 
 ## Developers
 
-Python, CLI, baseline, event-correlation, quarantine, recovery, and safe-canary commands
-are in the [CLI guide](docs/CLI.md). Build and packaging instructions are in the
-[macOS app guide](app/macos/README.md). Native sensor provisioning is in the
-[Endpoint Security guide](native/macos/README.md).
+Python, CLI, Deep Scan, baseline, event-correlation, quarantine, recovery, and
+safe-canary commands are in the [CLI guide](docs/CLI.md). Build and packaging
+instructions are in the [macOS app guide](app/macos/README.md). Native sensor
+provisioning is in the [Endpoint Security guide](native/macos/README.md).
 
 ```sh
-python3 -m pip install -e .
+python3 -m pip install -e '.[yara]'
 rattler --pretty
+rattler files scan ~/Downloads --rules rules --pretty
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 ```
 
-RATtler’s staged prevention, system-extension, tamper-evidence, and fleet plans
-are documented in the [response roadmap](docs/ROADMAP.md).
+RATtler’s staged prevention, system-extension, tamper-evidence, fleet, and
+next-generation detection plans are documented in the
+[response roadmap](docs/ROADMAP.md).
 
 Contributions are welcome under the MIT license. See
 [`CONTRIBUTING.md`](CONTRIBUTING.md).

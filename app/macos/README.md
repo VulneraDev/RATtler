@@ -24,6 +24,11 @@ versioned, content-addressed document and photo copies beneath Application
 Support. Automatic updates freeze on ransomware evidence. Reviewed recovery
 creates a new Desktop folder and never overwrites originals.
 
+Deep Scan reads only a file or folder selected through the native picker. It
+applies the bundled community YARA rules, calculates SHA-256, inspects Mach-O
+signing, and returns explainable static evidence. Scanning is bounded and local;
+symbolic links are not followed and no content is uploaded.
+
 ## Install the app
 
 Download one ZIP from the main [README](../../README.md), open it, then drag
@@ -54,7 +59,9 @@ working if moved away from the repository.
 Install the build-only dependency and create a self-contained ZIP file:
 
 ```sh
-python3 -m pip install pyinstaller
+MACOSX_DEPLOYMENT_TARGET=13.0 python3 -m pip install pyinstaller
+MACOSX_DEPLOYMENT_TARGET=13.0 python3 -m pip install \
+  --no-binary=yara-python yara-python==4.5.4
 ./app/macos/build.sh --portable --archive
 ```
 
@@ -63,6 +70,9 @@ users to install RATtler or Python separately. They are ad-hoc signed, not
 notarized, so macOS identifies them as community preview builds. The release
 workflow builds separate Apple Silicon and Intel artifacts on GitHub-hosted
 macOS runners.
+
+Portable bundles include the YARA and yara-python license texts under app
+Resources. See [`THIRD_PARTY_NOTICES.md`](../../THIRD_PARTY_NOTICES.md).
 
 ## Verify a GitHub release (optional)
 

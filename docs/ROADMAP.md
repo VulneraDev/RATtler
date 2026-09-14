@@ -131,6 +131,67 @@ These controls remain local to the current user. They improve tuning and
 snapshot evidence but do not claim root-owned policy protection or loss-aware
 real-time lineage; those remain gated on the signed system extension.
 
+## 0.13 — Deep Scan and open detection rules
+
+Status: implemented.
+
+- Add on-demand file and folder inspection to the native app.
+- Bundle original community YARA rules with reproducible source hashes.
+- Combine YARA evidence with SHA-256, Mach-O signing, filename, location, and
+  bounded entropy context.
+- Give individual YARA rules source-bound identities for precise exceptions.
+- Keep scans local and cap file count, directory traversal, bytes, time, findings,
+  per-file size, and returned file records.
+- Refuse a symbolic-link target and never traverse links in selected folders.
+- Connect exact-hash findings to reviewed quarantine and expiring exceptions.
+- Provide a harmless end-to-end validation marker and rule authoring gates.
+
+Deep Scan is not a full antivirus engine. It does not recursively unpack every
+archive, emulate code, or claim that a match is malicious. Those capabilities
+need dedicated limits, test corpora, and false-positive budgets.
+
+## 0.14 — Detection engineering lab
+
+Status: next.
+
+- **ReplayForge:** replay versioned, harmless endpoint-event fixtures through the
+  same correlation engine used by live scans.
+- **Chainlight:** turn related process, persistence, network, loaded-code, file,
+  and ransomware evidence into a time-ordered attack chain.
+- Map tested detections to ATT&CK techniques without treating framework coverage
+  as proof of detection quality.
+- Publish machine-readable rule tests, expected findings, performance budgets,
+  and negative fixtures so contributors can measure regressions in CI.
+- Export a privacy-scrubbed investigation bundle with stable event and rule IDs.
+
+This is RATtler's main differentiator: detections should be explainable,
+replayable, and measurable by any contributor without installing malware.
+
+## 0.15 — Persistence and system audit breadth
+
+Status: planned.
+
+- Expand persistence coverage to login items, background task management,
+  authorization plug-ins, configuration profiles, shell startup files, cron,
+  periodic jobs, browser extensions, and developer-tool extensions.
+- Track privacy-sensitive grants and security-control drift as configuration
+  evidence, not automatic malware findings.
+- Add signed-binary, notarization, ownership, and permission context while
+  preserving behavioral evidence as the primary signal.
+- Baseline each source independently so unavailable permissions degrade only the
+  affected coverage.
+
+## 0.16 — Continuous local operation
+
+Status: planned.
+
+- Add an optional menu-bar controller, launch-at-login flow, local notifications,
+  and explicit pause/resume state.
+- Make background operation observable through BluePulse freshness and event-loss
+  evidence rather than silently claiming continuous protection.
+- Add signed update metadata and rollback-safe releases after Developer ID and
+  notarization are available.
+
 ## 1.0 — Signed system extension and tamper evidence
 
 Status: planned after prevention validation.
@@ -172,10 +233,8 @@ privacy requirements need separate design and testing.
 
 The other blue-team concepts remain recorded for later exploration:
 
-- **Chainlight:** visual, cross-source attack chains with portable temporal rules.
 - **HoneyHome:** harmless endpoint decoys that alert when opened or copied.
 - **ExtensionWatch:** browser and IDE extension permission and publisher drift.
-- **ReplayForge:** safe synthetic event replay for testing detections in CI.
 
 These are ideas, not shipped RATtler capabilities. Each needs its own privacy,
 false-positive, and safe-validation design before implementation.

@@ -22,6 +22,44 @@ PYTHONPATH=src python3 -m rattler --pretty
 One-shot exit codes are `0` healthy, `1` degraded, `2` unknown, and `3`
 unhealthy. `Ctrl-C` returns `130` in watch mode.
 
+## Deep Scan
+
+Install the optional YARA engine and inspect one selected file or folder:
+
+```sh
+python3 -m pip install -e '.[yara]'
+rattler files scan ~/Downloads --rules rules --pretty
+```
+
+The desktop release already includes the YARA engine and RATtler's community
+rules. The CLI keeps it optional so the normal endpoint-health command stays
+dependency-light. Repeat `--rules` to combine reviewed rule files or folders.
+Only `.yar` and `.yara` files are compiled.
+
+Deep Scan calculates SHA-256, samples entropy, recognizes Mach-O content,
+checks signing identity on macOS, and reports disguised executable names. YARA
+results include the rule name, tags, confidence metadata, source filename, and
+SHA-256 of the exact rule source. A rule-specific ID plus the scanned file hash
+prevents an exception for one rule from hiding a different rule match.
+
+Defaults are intentionally bounded: 2,000 files, 64 MiB per file, 512 MiB total,
+120 seconds, 10,000 visited directories, 500 findings, and 250 reported file records.
+Symbolic-link targets are refused and links inside folders are not followed.
+Override the byte and file limits only for a controlled investigation:
+
+```sh
+rattler files scan ./samples --rules ./rules \
+  --max-files 5000 --max-file-bytes 134217728 \
+  --max-total-bytes 1073741824 --max-seconds 300 --pretty
+```
+
+Use `--no-recursive` for only the chosen folder's immediate files and
+`--exceptions ~/.rattler/exceptions.json` to apply reviewed, expiring,
+file-hash-bound exceptions. Deep Scan returns `0` with no active match, `1` when
+findings need review, `3` for a high-priority match, and `2` when the request is
+refused. Coverage and safety-limit details remain explicit in the JSON even
+when no threat indicator matched.
+
 ## BluePulse confidence
 
 Every scan includes a `bluepulse` sensor result. It reports high, reduced, or

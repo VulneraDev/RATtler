@@ -1,0 +1,93 @@
+{
+  "status": "risk",
+  "target": "/Users/example/Downloads/Review Samples",
+  "check": {
+    "name": "file_scanner",
+    "status": "healthy",
+    "message": "bounded file inspection completed",
+    "details": {
+      "yara_rules": 1,
+      "yara_error": null,
+      "limited": false
+    }
+  },
+  "exception_check": {
+    "name": "exceptions",
+    "status": "healthy",
+    "message": "reviewed finding exceptions applied",
+    "details": {
+      "suppressed_findings": 0
+    }
+  },
+  "summary": {
+    "scanned_files": 3,
+    "reported_files": 3,
+    "findings": 2,
+    "bytes_read": 184320,
+    "errors": 0,
+    "limited": false,
+    "yara_rules": 1,
+    "suppressed_findings": 0
+  },
+  "findings": [
+    {
+      "rule_id": "RAT-FILE-001",
+      "title": "Executable uses a disguised document name",
+      "severity": "high",
+      "category": "file_scan",
+      "message": "A document-style filename is followed by an executable extension.",
+      "evidence": {
+        "path": "/Users/example/Downloads/Review Samples/Invoice.pdf.command",
+        "sha256": "327a2df0ae94f1ad4d133f6c9831c2179d33dcbdc78a61a7dad113343a517ba2",
+        "suffixes": [".pdf", ".command"]
+      }
+    },
+    {
+      "rule_id": "RAT-FILE-YARA-001",
+      "title": "YARA rule matched: RATtler_Heuristic_Script_Downloader_Pipeline",
+      "severity": "medium",
+      "category": "file_scan",
+      "message": "A script combines a network downloader with direct shell execution. Review its source and origin.",
+      "evidence": {
+        "path": "/Users/example/Downloads/Review Samples/setup.command",
+        "sha256": "03bf97e8d0e8b82f41f96f37cb8cc92e7c7819ee476f237740de3259db40f32e",
+        "rule": "RATtler_Heuristic_Script_Downloader_Pipeline",
+        "confidence": "heuristic",
+        "rule_source": "rattler_core.yar",
+        "rule_source_sha256": "f29a81b5be483e388d805eaf7df7d4957276ff5ae4de9a5a06e0a23615704048"
+      }
+    }
+  ],
+  "files": [
+    {
+      "path": "/Users/example/Downloads/Review Samples/Invoice.pdf.command",
+      "sha256": "327a2df0ae94f1ad4d133f6c9831c2179d33dcbdc78a61a7dad113343a517ba2",
+      "size": 63488,
+      "entropy": 6.424,
+      "finding_count": 1
+    },
+    {
+      "path": "/Users/example/Downloads/Review Samples/setup.command",
+      "sha256": "03bf97e8d0e8b82f41f96f37cb8cc92e7c7819ee476f237740de3259db40f32e",
+      "size": 28672,
+      "entropy": 5.017,
+      "finding_count": 1
+    },
+    {
+      "path": "/Users/example/Downloads/Review Samples/readme.txt",
+      "sha256": "dbd0903860f33e80fd2b3f138be8d19e3e75bc775237122afeac69e1a9e13965",
+      "size": 92160,
+      "entropy": 4.112,
+      "finding_count": 0
+    }
+  ],
+  "errors": [],
+  "rule_manifest": [
+    {
+      "namespace": "rattler_0000",
+      "source": "rattler_core.yar",
+      "sha256": "f29a81b5be483e388d805eaf7df7d4957276ff5ae4de9a5a06e0a23615704048",
+      "size": 2413
+    }
+  ]
+}

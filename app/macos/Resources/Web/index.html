@@ -22,6 +22,7 @@
     <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 2.6 2.6L16.5 9"/></symbol>
     <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6h7l2 2h9v10H3V6Z"/></symbol>
     <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8.5 10V7.5a3.5 3.5 0 0 1 7 0V10M12 14v3"/></symbol>
+    <symbol id="i-scan" viewBox="0 0 24 24"><path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4"/><circle cx="12" cy="12" r="4"/><path d="m15 15 3 3"/></symbol>
   </svg>
   <div class="shell">
     <aside class="sidebar">
@@ -33,6 +34,7 @@
       <nav>
         <button class="nav-item active" data-view="dashboard"><span class="nav-icon"><svg><use href="#i-grid"></use></svg></span>Dashboard<i></i></button>
         <button class="nav-item" data-view="findings"><span class="nav-icon"><svg><use href="#i-shield"></use></svg></span>Findings<i></i></button>
+        <button class="nav-item" data-view="deep-scan"><span class="nav-icon"><svg><use href="#i-scan"></use></svg></span>Deep Scan<i></i></button>
         <button class="nav-item" data-view="ransomware"><span class="nav-icon"><svg><use href="#i-lock"></use></svg></span>Ransomware<i></i></button>
         <button class="nav-item" data-view="bluepulse"><span class="nav-icon"><svg><use href="#i-pulse"></use></svg></span>BluePulse<i></i></button>
         <button class="nav-item" data-view="activity"><span class="nav-icon"><svg><use href="#i-clock"></use></svg></span>Activity<i></i></button>
@@ -43,7 +45,7 @@
       </nav>
       <div class="sidebar-status">
         <span id="sidebar-dot" class="status-dot unknown"></span>
-        <div><strong id="sidebar-label">Awaiting scan</strong><small>Community Preview <span id="app-version">0.12.0</span></small></div>
+        <div><strong id="sidebar-label">Awaiting scan</strong><small>Community Preview <span id="app-version">0.13.0</span></small></div>
       </div>
     </aside>
 
@@ -78,6 +80,11 @@
             <span id="finding-count">0 shown</span>
           </div>
           <div id="findings-list"></div>
+        </section>
+
+        <section id="deep-scan" class="view">
+          <div class="page-heading"><small>LOCAL FILE INSPECTION</small><h1>Deep Scan</h1><p>Inspect a file or folder with YARA, SHA-256, signing identity, and explainable static analysis.</p></div>
+          <div id="file-scan-content"></div>
         </section>
 
         <section id="bluepulse" class="view">

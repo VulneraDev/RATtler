@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const state = { report: null, quarantine: [], exceptions: [], capabilities: { baseline: false, nativeEvents: false, recovery: false, recoveryFrozen: false, recoveryError: false, installed: true, appPath: "", version: "0.12.0" }, phase: "starting", autoTimer: null };
+  const state = { report: null, fileScan: null, quarantine: [], exceptions: [], capabilities: { baseline: false, nativeEvents: false, yaraRules: false, recovery: false, recoveryFrozen: false, recoveryError: false, installed: true, appPath: "", version: "0.13.0" }, phase: "starting", autoTimer: null };
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const esc = value => String(value ?? "—").replace(/[&<>'"]/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[char]));
@@ -32,6 +32,7 @@
     return { fresh: Number.isFinite(age) && age >= 0 && age <= 150000, age };
   };
   const ageLabel = age => !Number.isFinite(age) ? "Unknown" : age < 60000 ? "Just now" : `${Math.floor(age / 60000)} min ago`;
+  const byteLabel = value => { const size=Number(value||0); if(size<1024)return `${size} B`; if(size<1048576)return `${(size/1024).toFixed(1)} KB`; if(size<1073741824)return `${(size/1048576).toFixed(1)} MB`; return `${(size/1073741824).toFixed(1)} GB`; };
 
   function renderDashboard() {
     if (!state.report) return;
@@ -114,6 +115,34 @@
     if (!cdhash && !sha256 && !(teamId && identifier)) return null;
     return { ruleId:finding.rule_id, path, cdhash, sha256, teamId, identifier };
   };
+  function renderFileScan() {
+    const scan = state.fileScan;
+    if (!scan) {
+      $("#file-scan-content").innerHTML = `
+        <article class="panel deep-scan-start"><div class="deep-scan-emblem">${icon("scan")}<i></i></div><div><div class="status-kicker">ON-DEMAND · LOCAL ONLY</div><h2>Choose what you want RATtler to inspect</h2><p>Deep Scan reads selected file contents locally to calculate SHA-256, apply bundled YARA rules, validate Mach-O signing, and explain suspicious file traits. Nothing is uploaded.</p><small>2,000 files · 64 MB per file · 512 MB total · 120 seconds · symbolic links are not followed</small></div><button id="choose-file-scan" class="scan-button">Choose file or folder</button></article>
+        <div class="deep-scan-principles"><article class="panel"><strong>Evidence, not labels</strong><p>Heuristic matches are shown as review signals. A match is not automatically called malware.</p></article><article class="panel"><strong>Bounded against hostile input</strong><p>File counts, bytes, recursion, YARA runtime, output, and errors all have explicit limits.</p></article><article class="panel"><strong>Exact response identity</strong><p>Quarantine and temporary exceptions remain bound to the reviewed file hash.</p></article></div>`;
+      $("#choose-file-scan")?.addEventListener("click",()=>native("selectFileScan"));
+      return;
+    }
+    const summary=scan.summary||{}, check=scan.check||{status:"unknown",message:"Coverage unavailable",details:{}}, findings=[...(scan.findings||[])].sort((a,b)=>severityRank(b.severity)-severityRank(a.severity));
+    const stateClass=scan.status==="risk"?"unhealthy":scan.status==="review"?"degraded":"healthy";
+    const headline=scan.status==="risk"?"Deep Scan found high-priority evidence":scan.status==="review"?"Deep Scan found items to review":"No rule or static indicator matched";
+    const coverage=check.status==="healthy"?"YARA and static inspection completed within their safety budgets.":check.message;
+    const findingList=findings.length?findings.map((finding,index)=>{
+      const candidate=responseCandidate(finding), identity=exceptionCandidate(finding);
+      const controls=`<div class="response-action"><span>Exact-hash actions</span>${identity?`<button class="exception-button scan-exception" data-index="${index}">Ignore 30 days</button>`:""}${candidate&&["critical","high"].includes(finding.severity)?`<button class="quarantine-button scan-quarantine" data-index="${index}">Review quarantine</button>`:""}</div>`;
+      return `<article class="panel finding-card expanded">${findingRow(finding)}${controls}${evidence(finding.evidence)}</article>`;
+    }).join(""):`<div class="ransom-clear"><span>✓</span><div><strong>No active file indicators</strong><p>RATtler did not find a bundled rule match or static trait above its review threshold.</p></div></div>`;
+    const files=(scan.files||[]).slice(0,50).map(file=>`<div class="scan-file-row"><div><strong title="${esc(file.path)}">${esc(file.path)}</strong><small>${esc(String(file.sha256||"").slice(0,20))}… · ${byteLabel(file.size)} · entropy ${esc(file.entropy)}</small></div><span class="${Number(file.finding_count)>0?"warning":""}">${Number(file.finding_count)>0?`${file.finding_count} signal${file.finding_count===1?"":"s"}`:"CLEAR"}</span></div>`).join("");
+    $("#file-scan-content").innerHTML=`
+      <article class="panel hero ${esc(stateClass)} deep-scan-hero"><div class="shield-orbit"></div><div class="hero-copy"><div class="status-kicker">${esc(scan.status.toUpperCase())}</div><h2>${esc(headline)}</h2><p>${esc(coverage)}</p><div class="hostline">${esc(scan.target)}</div></div><button id="choose-file-scan" class="scan-button">Scan another target</button></article>
+      <div class="metrics">${metric(Number(summary.scanned_files||0).toLocaleString(),"Files scanned",summary.limited?"Safety limit reached":"Bounded inspection","folder",summary.limited?"warning":"")}${metric(summary.yara_rules||0,"YARA files",check.details?.yara_error||"Bundled local rules","scan",check.details?.yara_error?"warning":"info")}${metric(findings.length,"Findings",findings.length?"Review evidence":"No active match","alert",findings.length?"danger":"")}${metric(byteLabel(summary.bytes_read),"Content read","Never uploaded","lock","")}</div>
+      ${check.status!=="healthy"?`<div class="notice warning"><span>△</span><div><strong>Partial scan coverage</strong><p>${esc(check.message)}${check.details?.yara_error?` ${esc(check.details.yara_error)}`:""}</p></div></div>`:""}
+      <div class="deep-scan-grid"><article class="scan-findings"><div class="card-title"><div><h3>File findings</h3><p>Rule matches and independently explainable traits</p></div><span>${findings.length} total</span></div>${findingList}</article><article class="panel card-block"><div class="card-title"><div><h3>Inspected files</h3><p>Showing up to 50 local records</p></div><span>${Number(summary.reported_files||0)} retained</span></div><div class="scan-file-list">${files||"<span>No readable files were retained.</span>"}</div></article></div>`;
+    $("#choose-file-scan")?.addEventListener("click",()=>native("selectFileScan"));
+    $$(".scan-quarantine").forEach(button=>button.addEventListener("click",()=>{const candidate=responseCandidate(findings[Number(button.dataset.index)]);if(candidate)native("quarantine",{path:candidate,ruleId:findings[Number(button.dataset.index)].rule_id,fileScan:true});}));
+    $$(".scan-exception").forEach(button=>button.addEventListener("click",()=>{const candidate=exceptionCandidate(findings[Number(button.dataset.index)]);if(candidate)native("addException",{exception:candidate,fileScan:true});}));
+  }
   function renderRansomware() {
     if (!state.report) { $("#ransomware-content").innerHTML = empty("▣","No file-defense report yet","Run a scan to initialize protected-folder monitoring."); return; }
     const behavior = state.report.behavior || {};
@@ -235,14 +264,15 @@
     $("#sidebar-label").textContent = state.report ? statusLabel(status) : "Awaiting scan";
     $("#export-button").disabled = !state.report;
   }
-  function renderAll() { renderDashboard(); renderFindings(); renderRansomware(); renderBluePulse(); renderActivity(); renderSettings(); renderChrome(); }
+  function renderAll() { renderDashboard(); renderFindings(); renderFileScan(); renderRansomware(); renderBluePulse(); renderActivity(); renderSettings(); renderChrome(); }
   function showToast(message, success = false) { const toast=$("#toast"); $("strong",toast).textContent=success ? "Response completed" : "RATtler needs attention"; $("p",toast).textContent=message; toast.classList.toggle("success",success); toast.classList.add("visible"); clearTimeout(showToast.timer); showToast.timer=setTimeout(()=>toast.classList.remove("visible"),7000); }
 
   window.RATtler = {
     receiveReport(base64) { try { state.report=JSON.parse(decode(base64)); renderAll(); } catch(error) { showToast(`The report could not be displayed: ${error.message}`); } },
+    receiveFileScan(base64) { try { state.fileScan=JSON.parse(decode(base64)); renderFileScan(); } catch(error) { showToast(`The file scan could not be displayed: ${error.message}`); } },
     receiveCapabilities(base64) { try { state.capabilities={...state.capabilities,...JSON.parse(decode(base64))}; renderAll(); } catch(_) {} },
     receiveState(base64) { try { const next=JSON.parse(decode(base64)); state.phase=next.phase; $("#activity-message").textContent=next.message; const scanning=next.phase==="scanning"; $("#scan-button").classList.toggle("scanning",scanning); $("#scan-button").disabled=scanning; if(next.phase==="error") showToast(next.message); } catch(_) {} },
-    receiveResponse(base64) { try { const result=JSON.parse(decode(base64)); if(Array.isArray(result.entries)) { state.quarantine=result.entries; renderSettings(); } if(Array.isArray(result.exceptions)) { state.exceptions=result.exceptions; renderSettings(); } if(result.message) showToast(result.message, Boolean(result.success)); } catch(_) {} }
+    receiveResponse(base64) { try { const result=JSON.parse(decode(base64)); if(Array.isArray(result.entries)) { state.quarantine=result.entries; renderSettings(); } if(Array.isArray(result.exceptions)) { state.exceptions=result.exceptions; renderSettings(); } if(result.clearFileScan) { state.fileScan=null; renderFileScan(); } if(result.message) showToast(result.message, Boolean(result.success)); } catch(_) {} }
   };
 
   $$(".nav-item").forEach(button => button.addEventListener("click", () => { $$(".nav-item").forEach(item=>item.classList.remove("active")); button.classList.add("active"); $$(".view").forEach(view=>view.classList.remove("active")); $(`#${button.dataset.view}`).classList.add("active"); if(button.dataset.view==="settings") { native("listQuarantine"); native("listExceptions"); } }));

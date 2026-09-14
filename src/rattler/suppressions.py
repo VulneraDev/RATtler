@@ -61,7 +61,7 @@ def validate_match(match: Dict[str, object]) -> Dict[str, str]:
     path = normalized.get("path")
     if not path or not posixpath.isabs(path):
         raise ValueError("exceptions require an absolute path")
-    normalized["path"] = posixpath.normpath(path)
+    normalized["path"] = posixpath.realpath(path)
     if "cdhash" in normalized:
         normalized["cdhash"] = _hex(normalized["cdhash"], (40, 64), "CDHash")
     if "sha256" in normalized:
@@ -163,7 +163,7 @@ def _matches(entry: Dict[str, object], rule_id: str, evidence: Dict[str, object]
         return False
     match = entry["match"]
     sources = {
-        "path": {posixpath.normpath(value) for value in _evidence_values(evidence, PATH_EVIDENCE) if posixpath.isabs(value)},
+        "path": {posixpath.realpath(value) for value in _evidence_values(evidence, PATH_EVIDENCE) if posixpath.isabs(value)},
         "cdhash": {value.lower() for value in _evidence_values(evidence, CDHASH_EVIDENCE)},
         "sha256": {value.lower() for value in _evidence_values(evidence, SHA256_EVIDENCE)},
         "team_id": _evidence_values(evidence, TEAM_EVIDENCE),

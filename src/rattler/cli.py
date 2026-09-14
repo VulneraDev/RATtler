@@ -83,6 +83,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         from .suppressions import main as suppressions_main
 
         return suppressions_main(raw_arguments[1:])
+    if raw_arguments and raw_arguments[0] == "files":
+        from .file_scanner import main as file_scanner_main
+
+        return file_scanner_main(raw_arguments[1:])
     args = _parser().parse_args(raw_arguments)
     if args.interval <= 0:
         _parser().error("--interval must be greater than zero")

@@ -8,6 +8,7 @@
 @property(nonatomic, strong) NSWindow *window;
 @property(nonatomic, strong) WKWebView *webView;
 @property(nonatomic, strong) NSData *lastReport;
+@property(nonatomic, copy) NSString *lastFileScanPath;
 @property(nonatomic, assign) BOOL scanning;
 - (NSString *)responseErrorFromResult:(NSDictionary *)result fallback:(NSString *)fallback;
 - (BOOL)isValidSHA256:(NSString *)digest;
@@ -15,10 +16,12 @@
 - (void)enableRecovery;
 - (void)recoverFiles;
 - (void)resumeRecovery;
-- (void)planFindingException:(NSDictionary *)exception;
+- (void)planFindingException:(NSDictionary *)exception fileScan:(BOOL)fileScan;
 - (NSArray<NSString *> *)exceptionArgumentsForFinding:(NSDictionary *)exception apply:(BOOL)apply;
 - (void)listExceptions;
 - (void)planRemoveException:(NSString *)identifier;
+- (void)selectFileScan;
+- (void)startFileScanPath:(NSString *)path;
 @end
 
 @implementation RATAppDelegate
@@ -125,7 +128,8 @@
     } else if ([action isEqualToString:@"quarantine"]) {
         NSString *path = ((NSDictionary *)message.body)[@"path"];
         NSString *ruleID = ((NSDictionary *)message.body)[@"ruleId"];
-        [self planQuarantinePath:path ruleID:ruleID];
+        BOOL fileScan = [((NSDictionary *)message.body)[@"fileScan"] boolValue];
+        [self planQuarantinePath:path ruleID:ruleID fileScan:fileScan];
     } else if ([action isEqualToString:@"listQuarantine"]) {
         [self listQuarantine];
     } else if ([action isEqualToString:@"restore"]) {
@@ -134,12 +138,15 @@
     } else if ([action isEqualToString:@"addException"]) {
         NSDictionary *exception = [((NSDictionary *)message.body)[@"exception"] isKindOfClass:[NSDictionary class]]
             ? ((NSDictionary *)message.body)[@"exception"] : nil;
-        [self planFindingException:exception];
+        BOOL fileScan = [((NSDictionary *)message.body)[@"fileScan"] boolValue];
+        [self planFindingException:exception fileScan:fileScan];
     } else if ([action isEqualToString:@"listExceptions"]) {
         [self listExceptions];
     } else if ([action isEqualToString:@"removeException"]) {
         NSString *identifier = ((NSDictionary *)message.body)[@"id"];
         [self planRemoveException:identifier];
+    } else if ([action isEqualToString:@"selectFileScan"]) {
+        [self selectFileScan];
     } else if ([action isEqualToString:@"enableRecovery"]) {
         [self enableRecovery];
     } else if ([action isEqualToString:@"recoverFiles"]) {
@@ -317,7 +324,7 @@
     });
 }
 
-- (void)planQuarantinePath:(NSString *)path ruleID:(NSString *)ruleID {
+- (void)planQuarantinePath:(NSString *)path ruleID:(NSString *)ruleID fileScan:(BOOL)fileScan {
     if (self.scanning) return;
     if (![path isKindOfClass:[NSString class]] || !path.isAbsolutePath || path.length > 4096) {
         [self sendObject:@{@"phase": @"error", @"message": @"The finding does not contain a safe absolute file path."}
@@ -393,6 +400,7 @@
                         [self sendObject:@{
                             @"success": @YES,
                             @"message": [NSString stringWithFormat:@"File quarantined. Restore ID: %@", identifier],
+                            @"clearFileScan": @(fileScan),
                         } function:@"receiveResponse"];
                         [self sendObject:@{@"phase": @"ready", @"message": @"Reviewed quarantine completed"}
                                 function:@"receiveState"];
@@ -567,7 +575,7 @@
     return arguments;
 }
 
-- (void)planFindingException:(NSDictionary *)exception {
+- (void)planFindingException:(NSDictionary *)exception fileScan:(BOOL)fileScan {
     if (self.scanning) return;
     NSArray<NSString *> *planArguments = [self exceptionArgumentsForFinding:exception apply:NO];
     if (planArguments == nil) {
@@ -623,13 +631,69 @@
                         [self sendObject:@{ @"success": @YES, @"message": @"Reviewed exception added for 30 days." }
                                 function:@"receiveResponse"];
                         [self listExceptions];
-                        [self startScan];
+                        if (fileScan && self.lastFileScanPath.length > 0) {
+                            [self startFileScanPath:self.lastFileScanPath];
+                        } else {
+                            [self startScan];
+                        }
                     } else {
                         NSString *detail = [self responseErrorFromResult:appliedResult fallback:@"The exception was not added."];
                         [self sendObject:@{ @"phase": @"error", @"message": detail } function:@"receiveState"];
                     }
                 });
             });
+        });
+    });
+}
+
+- (void)selectFileScan {
+    if (self.scanning) return;
+    NSOpenPanel *panel = [NSOpenPanel openPanel];
+    panel.title = @"Choose a file or folder for Deep Scan";
+    panel.prompt = @"Scan";
+    panel.message = @"RATtler reads the selected contents locally. Nothing is uploaded.";
+    panel.canChooseFiles = YES;
+    panel.canChooseDirectories = YES;
+    panel.allowsMultipleSelection = NO;
+    panel.resolvesAliases = NO;
+    if ([panel runModal] == NSModalResponseOK && panel.URL != nil) {
+        [self startFileScanPath:panel.URL.path];
+    }
+}
+
+- (void)startFileScanPath:(NSString *)path {
+    if (self.scanning || !path.isAbsolutePath || path.length > 4096) return;
+    NSURL *rules = [[NSBundle mainBundle] URLForResource:@"Rules" withExtension:nil];
+    NSURL *exceptions = [[self applicationDataDirectory] URLByAppendingPathComponent:@"exceptions.json"];
+    if (rules == nil) {
+        [self sendObject:@{ @"phase": @"error", @"message": @"The bundled Deep Scan rules are missing." }
+                function:@"receiveState"];
+        return;
+    }
+    self.lastFileScanPath = [path copy];
+    self.scanning = YES;
+    [self sendObject:@{ @"phase": @"scanning", @"message": @"Deep Scan is inspecting the selected content locally…" }
+            function:@"receiveState"];
+    NSArray<NSString *> *arguments = @[
+        @"files", @"scan", path, @"--rules", rules.path,
+        @"--exceptions", exceptions.path, @"--pretty",
+    ];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSDictionary *result = [self runEngineArguments:arguments];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.scanning = NO;
+            NSData *output = result[@"output"];
+            NSDictionary *scan = output.length
+                ? [NSJSONSerialization JSONObjectWithData:output options:0 error:nil] : nil;
+            NSInteger status = [result[@"status"] integerValue];
+            if ((status == 0 || status == 1 || status == 3) && [scan isKindOfClass:[NSDictionary class]]) {
+                [self sendData:output function:@"receiveFileScan"];
+                [self sendObject:@{ @"phase": @"ready", @"message": @"Deep Scan completed" }
+                        function:@"receiveState"];
+            } else {
+                NSString *detail = [self responseErrorFromResult:result fallback:@"Deep Scan could not inspect that target."];
+                [self sendObject:@{ @"phase": @"error", @"message": detail } function:@"receiveState"];
+            }
         });
     });
 }
@@ -886,18 +950,20 @@
     NSURL *directory = [self applicationDataDirectory];
     BOOL baseline = [[NSFileManager defaultManager] fileExistsAtPath:[[directory URLByAppendingPathComponent:@"baseline.json"] path]];
     BOOL nativeEvents = [[NSFileManager defaultManager] fileExistsAtPath:[[directory URLByAppendingPathComponent:@"native-events.jsonl"] path]];
+    BOOL yaraRules = [[NSFileManager defaultManager] fileExistsAtPath:[[[NSBundle mainBundle] URLForResource:@"Rules" withExtension:nil] path]];
     NSString *appPath = [NSBundle mainBundle].bundleURL.path.stringByStandardizingPath;
     BOOL installed = [appPath isEqualToString:@"/Applications/RATtler.app"] ||
         [appPath hasPrefix:@"/Applications/"];
     [self sendObject:@{
         @"baseline": @(baseline),
         @"nativeEvents": @(nativeEvents),
+        @"yaraRules": @(yaraRules),
         @"recovery": @([self recoveryEnabled]),
         @"recoveryFrozen": @([self recoveryFrozen]),
         @"recoveryError": @([[NSFileManager defaultManager] fileExistsAtPath:[self recoveryErrorURL].path]),
         @"installed": @(installed),
         @"appPath": appPath ?: @"",
-        @"version": @"0.12.0",
+        @"version": @"0.13.0",
     }
             function:@"receiveCapabilities"];
 }

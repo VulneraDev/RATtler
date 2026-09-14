@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.13.0
+
+- Add a native Deep Scan tab with a file-and-folder picker and clear local-only
+  content-inspection disclosure
+- Bundle original community YARA rules and the YARA engine in portable macOS
+  releases while keeping YARA optional for the normal Python CLI
+- Calculate SHA-256, recognize Mach-O content, inspect macOS signing identity,
+  and explain disguised executable and high-entropy executable traits
+- Record the source filename and SHA-256 of every rule file behind a YARA match
+- Give each YARA rule a source-bound identity so an exception for one rule
+  cannot hide a different rule matching the same file
+- Bound scans by file, byte, time, directory, finding, and output limits;
+  refuse a symbolic-link target and never follow links inside a selected folder
+- Connect eligible results to exact-hash reviewed exceptions and manual,
+  reversible quarantine
+- Add a harmless YARA validation marker, rule-contribution guidance, CLI
+  documentation, and a reproducible synthetic Deep Scan screenshot
+
 ## 0.12.0
 
 - Add reviewed, expiring finding exceptions bound to an exact rule, absolute

@@ -35,10 +35,18 @@ xcrun --sdk macosx clang \
 
 cp "$script_dir/Info.plist" "$app_bundle/Contents/Info.plist"
 cp -R "$script_dir/Resources/Web" "$app_bundle/Contents/Resources/Web"
+cp -R "$repository_root/rules" "$app_bundle/Contents/Resources/Rules"
+cp "$repository_root/THIRD_PARTY_NOTICES.md" "$app_bundle/Contents/Resources/THIRD_PARTY_NOTICES.md"
+cp -R "$repository_root/licenses" "$app_bundle/Contents/Resources/Licenses"
 
 if $portable; then
+    python3 -c 'import importlib.metadata as metadata, yara; raise SystemExit(metadata.version("yara-python") != "4.5.4")' >/dev/null 2>&1 || {
+        echo "portable builds require yara-python 4.5.4" >&2
+        exit 2
+    }
     python3 -m PyInstaller \
         --noconfirm --clean --onedir \
+        --hidden-import yara \
         --name rattler-engine \
         --paths "$repository_root/src" \
         --distpath "$build_root/engine-dist" \
