@@ -12,6 +12,7 @@ class Status(str, Enum):
 
 
 class Severity(str, Enum):
+    INFO = "info"
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -52,9 +53,19 @@ class Finding:
 
 
 @dataclass(frozen=True)
+class Event:
+    event_id: str
+    event_type: str
+    severity: Severity
+    observed_at: str
+    evidence: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class BehaviorReport:
     sensors: List[Check]
     findings: List[Finding]
+    events: List[Event] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

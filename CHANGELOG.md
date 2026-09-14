@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0
+
+- Persist process, TCP socket, launchd, and loaded-image snapshots
+- Emit process, listener, connection, persistence, and module-change events
+- Correlate related events across a configurable 15-minute window
+- Detect staged processes that establish network connections or persistence
+- Detect newly loaded user-writable code followed by network activity
+- Add private JSONL evidence journals with size-bounded rotation
+- Keep initial state creation quiet to avoid first-run event floods
+
 ## 0.4.0
 
 - Create permission-restricted, atomic SHA-256 integrity baselines

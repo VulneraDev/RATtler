@@ -48,6 +48,25 @@ user-writable locations. It is written atomically with mode `0600`. Because
 same-user malware could replace both files and a local baseline, keep a protected
 or remotely attested copy when using RATtler for higher-assurance monitoring.
 
+Enable event correlation by giving RATtler a state path. A journal is optional:
+
+```sh
+rattler --state ~/.rattler/state.json --pretty
+rattler --state ~/.rattler/state.json \
+  --journal ~/.rattler/events.jsonl \
+  --watch --interval 30 --changes-only
+```
+
+The first run records current state without emitting a flood of historical
+events. Later runs report process starts, new listeners and connections,
+persistence changes, and newly loaded user-writable Mach-O images. Related events
+are correlated across 15 minutes by default; change this with `--event-window`.
+
+State and journal files contain local process paths and network endpoints. They
+are written with mode `0600` and never uploaded by RATtler. The JSONL journal
+rotates to `.1` at 10 MiB by default; use `--journal-max-bytes` to adjust it. Run
+only one state writer per path.
+
 Without installing:
 
 ```sh

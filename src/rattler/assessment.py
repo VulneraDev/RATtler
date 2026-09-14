@@ -3,6 +3,7 @@ from .providers import Provider
 
 
 SEVERITY_RANK = {
+    Severity.INFO: 0,
     Severity.LOW: 1,
     Severity.MEDIUM: 2,
     Severity.HIGH: 3,
@@ -12,7 +13,11 @@ SEVERITY_RANK = {
 
 def build_assessment(provider: Provider, behavior: BehaviorReport) -> Assessment:
     protection = provider.report()
-    highest = max((SEVERITY_RANK[item.severity] for item in behavior.findings), default=0)
+    highest = max(
+        [SEVERITY_RANK[item.severity] for item in behavior.findings]
+        + [SEVERITY_RANK[item.severity] for item in behavior.events],
+        default=0,
+    )
     if highest >= SEVERITY_RANK[Severity.HIGH]:
         status = Status.UNHEALTHY
     elif highest:

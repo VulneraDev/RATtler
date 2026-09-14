@@ -8,6 +8,7 @@ from typing import Optional, Sequence
 from .assessment import build_assessment
 from .baseline import check_baseline, create_baseline
 from .behavior import scan_behavior
+from .events import update_events
 from .model import Assessment, BehaviorReport, Status
 from .providers import select_provider
 
@@ -32,6 +33,10 @@ def _parser() -> argparse.ArgumentParser:
     baseline = parser.add_mutually_exclusive_group()
     baseline.add_argument("--create-baseline", metavar="PATH", help="write a known-good integrity baseline")
     baseline.add_argument("--baseline", metavar="PATH", help="check an existing integrity baseline")
+    parser.add_argument("--state", metavar="PATH", help="persist snapshots for event correlation")
+    parser.add_argument("--journal", metavar="PATH", help="append events as permission-restricted JSONL")
+    parser.add_argument("--journal-max-bytes", type=int, default=10485760, help="rotate journal above this size")
+    parser.add_argument("--event-window", type=int, default=900, help="correlation window in seconds")
     return parser
 
 
@@ -43,6 +48,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = _parser().parse_args(argv)
     if args.interval <= 0:
         _parser().error("--interval must be greater than zero")
+    if args.event_window <= 0:
+        _parser().error("--event-window must be greater than zero")
+    if args.journal_max_bytes <= 0:
+        _parser().error("--journal-max-bytes must be greater than zero")
+    if args.journal and not args.state:
+        _parser().error("--journal requires --state")
     if args.create_baseline:
         if args.watch:
             _parser().error("--create-baseline cannot be combined with --watch")
@@ -63,6 +74,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 behavior = BehaviorReport(
                     sensors=behavior.sensors + [baseline_check],
                     findings=behavior.findings + baseline_findings,
+                    events=behavior.events,
+                )
+            if args.state:
+                event_check, events, event_findings = update_events(
+                    Path(args.state), Path(args.journal) if args.journal else None,
+                    args.event_window,
+                    args.journal_max_bytes,
+                )
+                behavior = BehaviorReport(
+                    sensors=behavior.sensors + [event_check],
+                    findings=behavior.findings + event_findings,
+                    events=behavior.events + events,
                 )
             report = build_assessment(provider, behavior)
             fingerprint = json.dumps(
