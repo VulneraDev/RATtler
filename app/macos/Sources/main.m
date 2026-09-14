@@ -146,8 +146,14 @@
     NSURL *journal = [directory URLByAppendingPathComponent:@"events.jsonl"];
     NSURL *baseline = [directory URLByAppendingPathComponent:@"baseline.json"];
     NSURL *nativeEvents = [directory URLByAppendingPathComponent:@"native-events.jsonl"];
+    NSURL *ransomwareState = [directory URLByAppendingPathComponent:@"ransomware-state.json"];
+    NSString *home = NSHomeDirectory();
     NSMutableArray<NSString *> *arguments = [NSMutableArray arrayWithArray:@[
         @"--state", state.path, @"--journal", journal.path,
+        @"--ransomware-state", ransomwareState.path,
+        @"--ransomware-root", [home stringByAppendingPathComponent:@"Desktop"],
+        @"--ransomware-root", [home stringByAppendingPathComponent:@"Documents"],
+        @"--ransomware-root", [home stringByAppendingPathComponent:@"Pictures"],
         @"--exclude-pid", [NSString stringWithFormat:@"%d", getpid()], @"--pretty"
     ]];
     if ([[NSFileManager defaultManager] fileExistsAtPath:baseline.path]) {
@@ -510,7 +516,7 @@
         @"nativeEvents": @(nativeEvents),
         @"installed": @(installed),
         @"appPath": appPath ?: @"",
-        @"version": @"0.8.2",
+        @"version": @"0.9.0",
     }
             function:@"receiveCapabilities"];
 }

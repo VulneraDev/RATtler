@@ -37,6 +37,28 @@ Native collection is considered stale after 45 seconds without a heartbeat or
 event. The collector emits a heartbeat every 15 seconds. Heartbeats are consumed
 as health evidence and do not appear in the activity timeline.
 
+## Ransomware monitoring
+
+Persist a bounded metadata snapshot and compare it with later scans:
+
+```sh
+rattler --ransomware-state ~/.rattler/ransomware-state.json \
+  --ransomware-root ~/Desktop \
+  --ransomware-root ~/Documents \
+  --ransomware-root ~/Pictures \
+  --watch --interval 60 --changes-only --pretty
+```
+
+Without explicit roots, Desktop, Documents, and Pictures are used. The sensor
+tracks paths, size, modification time, and inode for at most 25,000 files; set a
+different positive bound with `--ransomware-max-files`. It does not read the
+contents of protected files. A small canary beside the private state file
+detects tampering, and BluePulse checks both artifacts' permissions.
+
+Rules report canary damage, repeated encryption-style extensions, bulk rewrites,
+possible ransom-note names, and mass deletion. This is scan-based detection
+while RATtler is open, not real-time write prevention or file recovery.
+
 ## Integrity baseline
 
 Create a baseline only after reviewing a clean scan:

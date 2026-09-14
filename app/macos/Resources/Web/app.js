@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const state = { report: null, quarantine: [], capabilities: { baseline: false, nativeEvents: false, installed: true, appPath: "", version: "0.8.2" }, phase: "starting", autoTimer: null };
+  const state = { report: null, quarantine: [], capabilities: { baseline: false, nativeEvents: false, installed: true, appPath: "", version: "0.9.0" }, phase: "starting", autoTimer: null };
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const esc = value => String(value ?? "—").replace(/[&<>'"]/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[char]));
@@ -24,6 +24,7 @@
   };
   const findingRow = finding => `<div class="finding-row ${esc(finding.severity)}"><div class="finding-main"><strong>${esc(finding.title)}</strong><p>${esc(finding.message)}</p><span class="meta">${esc(finding.rule_id)} &nbsp;•&nbsp; ${esc(title(finding.category))}</span></div>${badge(finding.severity)}</div>`;
   const pulseCheck = behavior => (behavior?.sensors || []).find(item => item.name === "bluepulse");
+  const ransomwareCheck = behavior => (behavior?.sensors || []).find(item => item.name === "ransomware");
   const scanFreshness = report => {
     if (document.documentElement.classList.contains("snapshot")) return { fresh:true, age:0 };
     const observed = Date.parse(report?.observed_at || "");
@@ -93,6 +94,43 @@
     }
     return null;
   };
+  function renderRansomware() {
+    if (!state.report) { $("#ransomware-content").innerHTML = empty("▣","No file-defense report yet","Run a scan to initialize protected-folder monitoring."); return; }
+    const behavior = state.report.behavior || {};
+    const sensor = ransomwareCheck(behavior) || {status:"unknown",message:"Ransomware sensor unavailable",details:{}};
+    const details = sensor.details || {};
+    const findings = (behavior.findings || []).filter(item => item.category === "ransomware").sort((a,b) => severityRank(b.severity)-severityRank(a.severity));
+    const severe = findings.some(item => ["critical","high"].includes(item.severity));
+    const warning = findings.length > 0 || sensor.status !== "healthy";
+    const heroStatus = severe ? "unhealthy" : warning ? "degraded" : "healthy";
+    const initialized = details.initialized === true;
+    const headline = severe ? "Encryption-like activity needs review" : warning ? "File defense needs attention" : initialized ? "No encryption pattern detected" : "Protected-folder baseline is ready";
+    const copy = severe ? "RATtler found multiple changes associated with ransomware. Review the evidence before taking manual action." : warning ? "Some monitoring coverage or file activity needs review." : "RATtler compared protected folders with the previous scan and found no ransomware pattern.";
+    const changed = Number(details.modified_files || 0) + Number(details.created_files || 0) + Number(details.deleted_files || 0);
+    const folders = Array.isArray(details.protected_folders) ? details.protected_folders : [];
+    const canary = details.canary || "unknown";
+    const signals = [
+      {name:"canary_integrity",status:canary==="healthy"?"healthy":"unhealthy",message:canary==="healthy"?"The local ransomware decoy is intact.":`The local canary is ${canary}.`},
+      {name:"rewrite_velocity",status:Number(details.modified_files||0)>=40?"degraded":"healthy",message:`${Number(details.modified_files||0)} protected files were rewritten since the previous scan.`},
+      {name:"extension_churn",status:Number(details.extension_replacements||0)||Number(details.encrypted_names||0)>=5?"unhealthy":"healthy",message:`${Number(details.extension_replacements||0)} encryption-style replacements and ${Number(details.encrypted_names||0)} suspicious names.`},
+      {name:"ransom_notes",status:Number(details.ransom_notes||0)?"unhealthy":"healthy",message:Number(details.ransom_notes||0)?`${Number(details.ransom_notes)} possible ransom note detected.`:"No new ransom-note filename was detected."}
+    ];
+    const indicatorList = findings.length ? findings.map(finding => `<div class="ransom-finding">${findingRow(finding)}${evidence(finding.evidence)}</div>`).join("") : `<div class="ransom-clear"><span>✓</span><div><strong>No active ransomware indicators</strong><p>Normal file changes can still occur; RATtler alerts only when a defined behavior threshold is crossed.</p></div></div>`;
+    $("#ransomware-content").innerHTML = `
+      <article class="panel ransom-hero ${esc(heroStatus)}"><div class="ransom-emblem">${icon("lock")}<i></i></div><div class="ransom-copy"><div class="status-kicker">${severe?"ACTION REQUIRED":warning?"REVIEW COVERAGE":"MONITORING"}</div><h2>${esc(headline)}</h2><p>${esc(copy)}</p><small>Detection observes changes while RATtler is open. Automatic write blocking is not enabled.</small></div><div class="ransom-sweep"><i></i></div></article>
+      <div class="metrics ransom-metrics">
+        ${metric(Number(details.monitored_files||0).toLocaleString(),"Files watched",folders.length?folders.join(", "):"Folder access needed","folder",sensor.status==="unknown"?"warning":"")}
+        ${metric(changed,"Recent changes","Created, modified, or deleted","refresh",changed?"info":"")}
+        ${metric(canary==="healthy"?"Intact":title(canary),"Canary","Tamper tripwire","shield",canary==="healthy"?"":"danger")}
+        ${metric(findings.length,"Indicators",findings.length?"Review evidence":"No active pattern","alert",findings.length?"danger":"")}
+      </div>
+      <div class="ransom-layout">
+        <article class="panel card-block"><div class="card-title"><div><h3>Ransomware signals</h3><p>Independent evidence checked on each scan</p></div><span>${esc(details.detection_mode||"snapshot monitoring")}</span></div>${signals.map(checkRow).join("")}</article>
+        <article class="panel card-block"><div class="card-title"><div><h3>Protected folders</h3><p>Metadata only—RATtler does not upload file contents</p></div></div><div class="folder-pills">${folders.length?folders.map(folder=>`<span>${icon("folder")}${esc(folder)}</span>`).join(""):`<p>Desktop, Documents, and Pictures could not be read. Review macOS folder permissions.</p>`}</div><div class="ransom-limit"><strong>${details.limited?"PARTIAL COVERAGE":"BOUNDED COVERAGE"}</strong><span>Up to ${Number(details.max_files||0).toLocaleString()} files per scan</span></div></article>
+      </div>
+      <article class="panel card-block ransom-indicators"><div class="card-title"><div><h3>Current ransomware indicators</h3><p>Evidence is also available in Findings and the local Activity timeline</p></div><span>${findings.length} active</span></div>${indicatorList}</article>`;
+    $$(".ransom-finding", $("#ransomware-content")).forEach(row => row.addEventListener("click", () => row.classList.toggle("expanded")));
+  }
   function renderBluePulse() {
     if (!state.report) { $("#bluepulse-content").innerHTML = empty("⌁","No confidence report yet","Run a scan so BluePulse can verify each available layer."); return; }
     const protection = state.report.protection || {}, behavior = state.report.behavior || {};
@@ -157,7 +195,7 @@
     $("#sidebar-label").textContent = state.report ? statusLabel(status) : "Awaiting scan";
     $("#export-button").disabled = !state.report;
   }
-  function renderAll() { renderDashboard(); renderFindings(); renderBluePulse(); renderActivity(); renderSettings(); renderChrome(); }
+  function renderAll() { renderDashboard(); renderFindings(); renderRansomware(); renderBluePulse(); renderActivity(); renderSettings(); renderChrome(); }
   function showToast(message, success = false) { const toast=$("#toast"); $("strong",toast).textContent=success ? "Response completed" : "RATtler needs attention"; $("p",toast).textContent=message; toast.classList.toggle("success",success); toast.classList.add("visible"); clearTimeout(showToast.timer); showToast.timer=setTimeout(()=>toast.classList.remove("visible"),7000); }
 
   window.RATtler = {
@@ -171,7 +209,7 @@
   $("#scan-button").addEventListener("click",()=>native("scan")); $("#export-button").addEventListener("click",()=>native("export")); $("#reveal-button").addEventListener("click",()=>native("reveal")); $("#quarantine-folder-button").addEventListener("click",()=>native("revealQuarantine")); $("#quarantine-refresh-button").addEventListener("click",()=>native("listQuarantine"));
   $("#baseline-button").addEventListener("click",()=>{ if(confirm(`${state.capabilities.baseline ? "Replace" : "Create"} the integrity baseline?\n\nOnly continue after reviewing the current scan and trusting this Mac’s present state.`)) native("baseline"); });
   $("#severity-filter").addEventListener("change",renderFindings); $("#finding-search").addEventListener("input",renderFindings); $("#toast button").addEventListener("click",()=>$("#toast").classList.remove("visible"));
-  const auto=$("#auto-scan"); auto.checked=localStorage.getItem("rattler-auto-scan")==="true"; const configureAuto=()=>{ clearInterval(state.autoTimer); state.autoTimer=null; if(auto.checked) state.autoTimer=setInterval(()=>native("scan"),60000); localStorage.setItem("rattler-auto-scan",auto.checked); }; auto.addEventListener("change",configureAuto); configureAuto();
+  const auto=$("#auto-scan"), storedAuto=localStorage.getItem("rattler-auto-scan"); auto.checked=storedAuto===null?true:storedAuto==="true"; const configureAuto=()=>{ clearInterval(state.autoTimer); state.autoTimer=null; if(auto.checked) state.autoTimer=setInterval(()=>native("scan"),60000); localStorage.setItem("rattler-auto-scan",auto.checked); }; auto.addEventListener("change",configureAuto); configureAuto();
   setInterval(()=>{ if ($("#bluepulse").classList.contains("active")) renderBluePulse(); },30000);
   native("capabilities");
 })();

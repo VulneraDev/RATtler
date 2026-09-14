@@ -61,6 +61,7 @@ def evaluate_bluepulse(
     journal_path: Optional[Path] = None,
     baseline_path: Optional[Path] = None,
     native_event_path: Optional[Path] = None,
+    ransomware_state_path: Optional[Path] = None,
 ) -> Check:
     """Return an explainable confidence check for the current scan."""
     checks = [
@@ -83,6 +84,11 @@ def evaluate_bluepulse(
         artifacts.append(("native event stream", native_event_path, False, False))
         if state_path is not None:
             artifacts.append(("native event cursor", Path(str(state_path) + ".native-cursor"), True, False))
+    if ransomware_state_path is not None:
+        artifacts.append(("ransomware state", ransomware_state_path, True, False))
+        artifacts.append((
+            "ransomware canary", ransomware_state_path.with_name("ransomware-canary.txt"), True, False,
+        ))
 
     artifact_issues = []
     artifacts_checked = 0

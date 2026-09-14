@@ -1,3 +1,3 @@
 """RATtler: open-source behavioral anti-RAT endpoint monitoring."""
 
-__version__ = "0.8.2"
+__version__ = "0.9.0"

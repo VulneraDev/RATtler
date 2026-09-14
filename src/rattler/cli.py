@@ -13,6 +13,7 @@ from .events import update_events
 from .model import Assessment, BehaviorReport, Status
 from .native_bridge import ingest_native_events
 from .providers import select_provider
+from .ransomware import DEFAULT_MAX_FILES, scan_ransomware
 
 
 EXIT_CODES = {
@@ -41,6 +42,15 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--journal-max-bytes", type=int, default=10485760, help="rotate journal above this size")
     parser.add_argument("--event-window", type=int, default=900, help="correlation window in seconds")
     parser.add_argument("--native-events", metavar="PATH", help="ingest native Endpoint Security JSONL")
+    parser.add_argument("--ransomware-state", metavar="PATH", help="persist anti-ransomware file-change state")
+    parser.add_argument(
+        "--ransomware-root", metavar="PATH", action="append", default=[],
+        help="folder to monitor for encryption-like changes (repeatable)",
+    )
+    parser.add_argument(
+        "--ransomware-max-files", type=int, default=DEFAULT_MAX_FILES,
+        help="maximum number of files sampled by ransomware monitoring",
+    )
     parser.add_argument(
         "--exclude-pid", metavar="PID", type=int, action="append", default=[],
         help="exclude one trusted host process PID (repeatable)",
@@ -65,12 +75,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         _parser().error("--event-window must be greater than zero")
     if args.journal_max_bytes <= 0:
         _parser().error("--journal-max-bytes must be greater than zero")
+    if args.ransomware_max_files <= 0:
+        _parser().error("--ransomware-max-files must be greater than zero")
     if any(pid <= 0 for pid in args.exclude_pid):
         _parser().error("--exclude-pid values must be greater than zero")
     if args.journal and not args.state:
         _parser().error("--journal requires --state")
     if args.native_events and not args.state:
         _parser().error("--native-events requires --state")
+    if args.ransomware_root and not args.ransomware_state:
+        _parser().error("--ransomware-root requires --ransomware-state")
     if args.create_baseline:
         if args.watch:
             _parser().error("--create-baseline cannot be combined with --watch")
@@ -117,6 +131,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     findings=behavior.findings + native_findings,
                     events=behavior.events + native_events,
                 )
+            if args.ransomware_state:
+                ransomware_roots = [Path(item) for item in args.ransomware_root] or [
+                    Path.home() / "Desktop", Path.home() / "Documents", Path.home() / "Pictures",
+                ]
+                ransomware_check, ransomware_findings, ransomware_events = scan_ransomware(
+                    Path(args.ransomware_state), ransomware_roots, args.ransomware_max_files,
+                )
+                behavior = BehaviorReport(
+                    sensors=behavior.sensors + [ransomware_check],
+                    findings=behavior.findings + ransomware_findings,
+                    events=behavior.events + ransomware_events,
+                )
             protection = provider.report()
             bluepulse = evaluate_bluepulse(
                 protection.checks,
@@ -126,6 +152,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 journal_path=Path(args.journal) if args.journal else None,
                 baseline_path=Path(args.baseline) if args.baseline else None,
                 native_event_path=Path(args.native_events) if args.native_events else None,
+                ransomware_state_path=Path(args.ransomware_state) if args.ransomware_state else None,
             )
             behavior = BehaviorReport(
                 sensors=behavior.sensors + [bluepulse],

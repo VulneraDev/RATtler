@@ -9,6 +9,12 @@ The BluePulse view separates detection confidence from threat status. It shows
 scan freshness, responding layers, event continuity, monitoring-file permission
 health, native collector heartbeat state, and dropped-event evidence.
 
+The Ransomware Defense view compares bounded metadata snapshots of Desktop,
+Documents, and Pictures on every scan. It surfaces rewrite bursts,
+encryption-style renames, ransom-note filenames, mass deletion, and local
+canary damage without reading or uploading protected-file contents. Automatic
+monitoring is enabled by default and runs every 60 seconds while the app is open.
+
 ## Install the app
 
 Download one ZIP from the main [README](../../README.md), open it, then drag

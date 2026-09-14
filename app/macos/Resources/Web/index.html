@@ -21,6 +21,7 @@
     <symbol id="i-coverage" viewBox="0 0 24 24"><path d="M4 18a10 10 0 0 1 16 0M7 14a6.5 6.5 0 0 1 10 0M10 10.5a3.5 3.5 0 0 1 4 0"/><circle cx="12" cy="19" r="1"/></symbol>
     <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 2.6 2.6L16.5 9"/></symbol>
     <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6h7l2 2h9v10H3V6Z"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8.5 10V7.5a3.5 3.5 0 0 1 7 0V10M12 14v3"/></symbol>
   </svg>
   <div class="shell">
     <aside class="sidebar">
@@ -32,6 +33,7 @@
       <nav>
         <button class="nav-item active" data-view="dashboard"><span class="nav-icon"><svg><use href="#i-grid"></use></svg></span>Dashboard<i></i></button>
         <button class="nav-item" data-view="findings"><span class="nav-icon"><svg><use href="#i-shield"></use></svg></span>Findings<i></i></button>
+        <button class="nav-item" data-view="ransomware"><span class="nav-icon"><svg><use href="#i-lock"></use></svg></span>Ransomware<i></i></button>
         <button class="nav-item" data-view="bluepulse"><span class="nav-icon"><svg><use href="#i-pulse"></use></svg></span>BluePulse<i></i></button>
         <button class="nav-item" data-view="activity"><span class="nav-icon"><svg><use href="#i-clock"></use></svg></span>Activity<i></i></button>
       </nav>
@@ -41,7 +43,7 @@
       </nav>
       <div class="sidebar-status">
         <span id="sidebar-dot" class="status-dot unknown"></span>
-        <div><strong id="sidebar-label">Awaiting scan</strong><small>Community Preview <span id="app-version">0.8.2</span></small></div>
+        <div><strong id="sidebar-label">Awaiting scan</strong><small>Community Preview <span id="app-version">0.9.0</span></small></div>
       </div>
     </aside>
 
@@ -81,6 +83,11 @@
         <section id="bluepulse" class="view">
           <div class="page-heading"><small>DETECTION CONFIDENCE</small><h1>BluePulse</h1><p>Know whether RATtler can trust the sensors behind the current result.</p></div>
           <div id="bluepulse-content"></div>
+        </section>
+
+        <section id="ransomware" class="view">
+          <div class="page-heading"><small>FILE DEFENSE</small><h1>Ransomware Defense</h1><p>Watch protected folders for encryption-like behavior and destructive file bursts.</p></div>
+          <div id="ransomware-content"></div>
         </section>
 
         <section id="activity" class="view">

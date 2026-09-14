@@ -51,7 +51,7 @@
         @"baseline": @YES,
         @"nativeEvents": @YES,
         @"installed": @YES,
-        @"version": @"0.8.2",
+        @"version": @"0.9.0",
     } options:0 error:nil];
     NSData *ready = [NSJSONSerialization dataWithJSONObject:@{
         @"phase": @"ready",
@@ -73,7 +73,9 @@
             [self finishWithError:error.localizedDescription];
             return;
         }
-        NSString *contentSelector = [self.viewID isEqualToString:@"bluepulse"] ? @"#bluepulse-content" : @"#dashboard-content";
+        NSString *contentSelector = @"#dashboard-content";
+        if ([self.viewID isEqualToString:@"bluepulse"]) contentSelector = @"#bluepulse-content";
+        if ([self.viewID isEqualToString:@"ransomware"]) contentSelector = @"#ransomware-content";
         NSString *diagnostic = [NSString stringWithFormat:
             @"JSON.stringify({children:document.querySelector('%@').childElementCount,toast:document.querySelector('#toast p').textContent,opacity:getComputedStyle(document.querySelector('#%@')).opacity})",
             contentSelector, self.viewID];
@@ -131,14 +133,14 @@ static RATSnapshotter *g_snapshotter;
 int main(int argc, const char *argv[]) {
     @autoreleasepool {
         if (argc != 4 && argc != 5) {
-            fprintf(stderr, "usage: render-screenshot PAGE REPORT OUTPUT [dashboard|bluepulse]\n");
+            fprintf(stderr, "usage: render-screenshot PAGE REPORT OUTPUT [dashboard|bluepulse|ransomware]\n");
             return 2;
         }
         NSURL *page = [NSURL fileURLWithPath:@(argv[1])];
         NSData *report = [NSData dataWithContentsOfFile:@(argv[2])];
         NSURL *output = [NSURL fileURLWithPath:@(argv[3])];
         NSString *view = argc == 5 ? @(argv[4]) : @"dashboard";
-        if (![@[@"dashboard", @"bluepulse"] containsObject:view]) {
+        if (![@[@"dashboard", @"bluepulse", @"ransomware"] containsObject:view]) {
             fprintf(stderr, "unsupported screenshot view\n");
             return 2;
         }

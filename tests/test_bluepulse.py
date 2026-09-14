@@ -64,6 +64,21 @@ class BluePulseTests(unittest.TestCase):
         self.assertEqual(pulse.details["artifact_issues"][0]["artifact"], "event state")
         self.assertIn("not private", pulse.details["artifact_issues"][0]["reason"])
 
+    def test_ransomware_state_and_canary_are_assurance_artifacts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "ransomware-state.json"
+            canary = Path(directory) / "ransomware-canary.txt"
+            state.write_text("{}", encoding="utf-8")
+            canary.write_text("canary", encoding="utf-8")
+            if os.name != "nt":
+                os.chmod(str(state), 0o600)
+                os.chmod(str(canary), 0o600)
+            pulse = evaluate_bluepulse(
+                PROTECTION, SENSORS, [], ransomware_state_path=state,
+            )
+        self.assertEqual(pulse.status, Status.HEALTHY)
+        self.assertEqual(pulse.details["artifacts_checked"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

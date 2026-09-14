@@ -35,7 +35,24 @@ BluePulse provides evidence within RATtler's current privilege boundary. It does
 not claim same-user tamper resistance or background protection while the app is
 closed; those require the signed system-extension design below.
 
-## 0.9 — Endpoint Security prevention preview
+## 0.9 — Ransomware Defense
+
+Status: implemented.
+
+- Keep bounded local metadata snapshots of Desktop, Documents, and Pictures.
+- Detect rapid rewrites, encryption-style extension replacement, ransom-note
+  creation, mass deletion, and a modified or missing local canary.
+- Keep threat findings separate from sensor availability in BluePulse.
+- Expose protected-folder coverage, change velocity, and evidence in a dedicated
+  native-app tab.
+- Read no protected-file contents and upload no paths or findings.
+- Run automatically every 60 seconds while the app is open.
+
+This layer is detection-only. It cannot stop writes already in progress or
+recover encrypted files, and same-user malware could tamper with its local
+state. Kernel-mediated authorization and root-owned state remain later gates.
+
+## 0.10 — Endpoint Security prevention preview
 
 Status: design and entitlement gate.
 

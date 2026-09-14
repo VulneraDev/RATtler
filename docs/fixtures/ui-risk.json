@@ -20,7 +20,8 @@
       {"name": "baseline", "status": "healthy", "message": "integrity baseline checked", "details": {"entries": 74}},
       {"name": "events", "status": "healthy", "message": "event changes correlated", "details": {"events": 3, "correlations": 1}},
       {"name": "native_events", "status": "healthy", "message": "3 native events ingested", "details": {"events": 3, "heartbeats": 1, "heartbeat_age_seconds": 3.7}},
-      {"name": "bluepulse", "status": "healthy", "message": "available sensor coverage verified", "details": {"confidence": "high", "confidence_scope": "available sensors", "operational": 9, "monitored": 9, "coverage_gaps": [], "monitoring_mode": "continuous snapshots", "event_continuity": "healthy", "native_telemetry": "healthy", "native_dropped_events": 0, "integrity_baseline": "healthy", "artifacts_checked": 5, "artifact_issues": []}}
+      {"name": "ransomware", "status": "healthy", "message": "ransomware behavior analyzed", "details": {"initialized": true, "monitored_files": 6844, "protected_folders": ["Desktop", "Documents", "Pictures"], "modified_files": 126, "created_files": 34, "deleted_files": 30, "extension_replacements": 18, "encrypted_names": 22, "ransom_notes": 1, "canary": "healthy", "access_errors": 0, "limited": false, "max_files": 25000, "detection_mode": "change snapshots while RATtler is open"}},
+      {"name": "bluepulse", "status": "healthy", "message": "available sensor coverage verified", "details": {"confidence": "high", "confidence_scope": "available sensors", "operational": 10, "monitored": 10, "coverage_gaps": [], "monitoring_mode": "continuous snapshots", "event_continuity": "healthy", "native_telemetry": "healthy", "native_dropped_events": 0, "integrity_baseline": "healthy", "artifacts_checked": 7, "artifact_issues": []}}
     ],
     "findings": [
       {
@@ -46,12 +47,30 @@
         "category": "process",
         "message": "A running executable originates from a location frequently abused by droppers.",
         "evidence": {"pid": 731, "executable": "/tmp/diagnostic-helper", "reason": "temporary directory"}
+      },
+      {
+        "rule_id": "RAT-RANSOM-002",
+        "title": "Files rapidly gained encryption-style extensions",
+        "severity": "high",
+        "category": "ransomware",
+        "message": "Multiple files were replaced with extensions commonly used by ransomware.",
+        "evidence": {"extension_replacements": 18, "encrypted_names": 22, "examples": ["~/Documents/Budget.xlsx.locked", "~/Pictures/Family.jpg.locked"]}
+      },
+      {
+        "rule_id": "RAT-RANSOM-004",
+        "title": "Possible ransom instructions appeared",
+        "severity": "high",
+        "category": "ransomware",
+        "message": "A new file name resembles instructions commonly left after encryption.",
+        "evidence": {"count": 1, "notes": ["~/Desktop/README_TO_DECRYPT.txt"]}
       }
     ],
     "events": [
       {"event_id": "demo-1", "event_type": "native_get_task", "severity": "high", "observed_at": "2026-09-14T03:18:39Z", "evidence": {"pid": 731, "target_pid": 488}},
       {"event_id": "demo-2", "event_type": "native_remote_thread_create", "severity": "critical", "observed_at": "2026-09-14T03:18:40Z", "evidence": {"pid": 731, "target_pid": 488}},
-      {"event_id": "demo-3", "event_type": "loaded_image_added", "severity": "high", "observed_at": "2026-09-14T03:18:42Z", "evidence": {"pid": 488, "path": "/tmp/diagnostic-plugin.dylib"}}
+      {"event_id": "demo-3", "event_type": "loaded_image_added", "severity": "high", "observed_at": "2026-09-14T03:18:42Z", "evidence": {"pid": 488, "path": "/tmp/diagnostic-plugin.dylib"}},
+      {"event_id": "demo-4", "event_type": "ransomware_extension_burst", "severity": "high", "observed_at": "2026-09-14T03:18:42Z", "evidence": {"extension_replacements": 18}},
+      {"event_id": "demo-5", "event_type": "ransomware_note_created", "severity": "high", "observed_at": "2026-09-14T03:18:42Z", "evidence": {"count": 1}}
     ]
   }
 }

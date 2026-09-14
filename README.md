@@ -11,8 +11,8 @@ the computer unless you export a report yourself.
 
 Download **one ZIP**—not both:
 
-- [Mac with an Apple chip](https://github.com/VulneraDev/RATtler/releases/download/v0.8.2/RATtler-macOS-Apple-Silicon.zip)
-- [Mac with an Intel processor](https://github.com/VulneraDev/RATtler/releases/download/v0.8.2/RATtler-macOS-Intel.zip)
+- [Mac with an Apple chip](https://github.com/VulneraDev/RATtler/releases/download/v0.9.0/RATtler-macOS-Apple-Silicon.zip)
+- [Mac with an Intel processor](https://github.com/VulneraDev/RATtler/releases/download/v0.9.0/RATtler-macOS-Intel.zip)
 
 Not sure which Mac you have? Open **Apple menu → About This Mac**:
 
@@ -64,6 +64,20 @@ labeled when they are not configured; their absence is not presented as failure.
 
 ![RATtler BluePulse detection confidence](docs/images/rattler-bluepulse.png)
 
+## Ransomware Defense
+
+The **Ransomware** tab watches file metadata in Desktop, Documents, and Pictures
+for changes commonly associated with encryption attacks. It detects bursts of
+file rewrites, encryption-style extension replacements, possible ransom-note
+filenames, mass deletion, and modification of a harmless local canary.
+
+Monitoring is local, bounded to 25,000 files, and runs on each scan while
+RATtler is open. RATtler does not read or upload protected-file contents. This
+release detects and explains suspicious changes; it does not automatically
+block writes, kill processes, or restore encrypted data.
+
+![RATtler Ransomware Defense](docs/images/rattler-ransomware.png)
+
 ## Screenshots
 
 These use safe synthetic data; no malware was installed to create them.
@@ -84,6 +98,8 @@ Risk detected:
 - TCP services exposed on every network interface
 - Deleted or untrusted Mach-O code loaded into protected processes
 - Code-signing and Team ID mismatches
+- Ransomware-style bulk rewrites, extension churn, ransom notes, mass deletion,
+  and local canary damage
 - BluePulse sensor confidence, scan freshness, state permissions, and event loss
 - Gatekeeper and XProtect health on macOS
 - Microsoft Defender health on Windows
@@ -109,6 +125,8 @@ the file again and never overwrites an existing destination.
   `~/Library/Application Support/RATtler`.
 - RATtler never quarantines automatically.
 - The current Endpoint Security collector is detection-only.
+- Ransomware monitoring records file paths, size, modification time, and inode
+  locally; it does not inspect protected-file contents.
 - BluePulse is tamper-evident within the app’s current permissions; it is not a
   substitute for the planned signed system extension and root-owned state.
 

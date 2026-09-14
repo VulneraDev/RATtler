@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.0
+
+- Add a dedicated Ransomware Defense tab to the macOS application
+- Monitor bounded metadata snapshots of Desktop, Documents, and Pictures
+- Detect encryption-style extension replacement, bulk rewrites, ransom-note
+  creation, mass deletion, and local canary damage
+- Emit explainable ransomware findings and local activity events
+- Keep protected-file contents private and make automatic monitoring opt-out
+- Include ransomware state and canary permissions in BluePulse assurance
+
 ## 0.8.2
 
 - Add BluePulse detection-confidence scoring alongside threat status
