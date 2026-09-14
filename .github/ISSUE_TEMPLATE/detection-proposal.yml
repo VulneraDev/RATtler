@@ -1,0 +1,43 @@
+name: Detection proposal
+description: Propose an explainable, testable RATtler detection
+title: "[Detection]: "
+labels: ["detection"]
+body:
+  - type: markdown
+    attributes:
+      value: Please describe behavior, not a malware brand. Never attach live malware, credentials, payloads, or private endpoint data.
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Behavior to detect
+      description: What observable endpoint behavior should RATtler identify?
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Required evidence
+      description: List the minimum independent signals and why ordinary activity should not produce them together.
+    validations:
+      required: true
+  - type: textarea
+    id: negative
+    attributes:
+      label: Negative case
+      description: Describe nearby legitimate activity that the rule must leave quiet.
+    validations:
+      required: true
+  - type: textarea
+    id: fixture
+    attributes:
+      label: Safe fixture plan
+      description: Explain how synthetic metadata can prove the behavior without executable content.
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options: [macOS, Windows, Linux, Cross-platform]
+    validations:
+      required: true

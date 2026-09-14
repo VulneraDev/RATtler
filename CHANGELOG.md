@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.14.0
+
+- Add ReplayForge to replay strictly bounded, metadata-only endpoint fixtures
+  through RATtler's production snapshot and native correlation functions
+- Add Chainlight stable, time-ordered evidence chains that join events by
+  process instance and rule-source links without falling back to reused PIDs
+- Publish positive and negative community fixtures with expected rule IDs,
+  chain counts, and performance budgets enforced in CI
+- Add conservative ATT&CK context with an explicit coverage-not-verdict caveat
+- Emit privacy-scrubbed investigation bundles with one-way tokens for paths,
+  endpoints, and process-instance values
+- Add a polished native Detection Lab view, bundle the fixtures in portable
+  releases, and document a safe contribution workflow
+- Add a detection proposal issue form and pull-request verification checklist
+- Fix the local development engine path inside generated app bundles
+
 ## 0.13.2
 
 - Canonicalize Windows drive and UNC paths through the filesystem before

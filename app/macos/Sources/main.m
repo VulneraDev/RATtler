@@ -22,6 +22,7 @@
 - (void)planRemoveException:(NSString *)identifier;
 - (void)selectFileScan;
 - (void)startFileScanPath:(NSString *)path;
+- (void)runDetectionLab;
 @end
 
 @implementation RATAppDelegate
@@ -147,6 +148,8 @@
         [self planRemoveException:identifier];
     } else if ([action isEqualToString:@"selectFileScan"]) {
         [self selectFileScan];
+    } else if ([action isEqualToString:@"runDetectionLab"]) {
+        [self runDetectionLab];
     } else if ([action isEqualToString:@"enableRecovery"]) {
         [self enableRecovery];
     } else if ([action isEqualToString:@"recoverFiles"]) {
@@ -160,6 +163,38 @@
     } else if ([action isEqualToString:@"capabilities"]) {
         [self sendCapabilities];
     }
+}
+
+- (void)runDetectionLab {
+    if (self.scanning) return;
+    NSURL *fixtures = [[[NSBundle mainBundle] resourceURL] URLByAppendingPathComponent:@"Detections/fixtures"
+                                                                         isDirectory:YES];
+    if (![[NSFileManager defaultManager] fileExistsAtPath:fixtures.path]) {
+        [self sendObject:@{@"phase": @"error", @"message": @"The bundled detection fixtures are missing."}
+                function:@"receiveState"];
+        return;
+    }
+    self.scanning = YES;
+    [self sendObject:@{@"phase": @"scanning", @"message": @"ReplayForge is validating the bundled detections…"}
+            function:@"receiveState"];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSDictionary *result = [self runEngineArguments:@[@"lab", @"--pretty", @"suite", fixtures.path]];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.scanning = NO;
+            NSData *output = result[@"output"];
+            NSDictionary *report = output.length
+                ? [NSJSONSerialization JSONObjectWithData:output options:0 error:nil] : nil;
+            NSInteger status = [result[@"status"] integerValue];
+            if ((status == 0 || status == 1) && [report isKindOfClass:[NSDictionary class]]) {
+                [self sendData:output function:@"receiveDetectionLab"];
+                NSString *message = status == 0 ? @"Detection lab passed" : @"Detection regression needs review";
+                [self sendObject:@{@"phase": @"ready", @"message": message} function:@"receiveState"];
+            } else {
+                NSString *detail = [self responseErrorFromResult:result fallback:@"Detection fixtures could not be replayed."];
+                [self sendObject:@{@"phase": @"error", @"message": detail} function:@"receiveState"];
+            }
+        });
+    });
 }
 
 - (NSURL *)applicationDataDirectory {
@@ -951,6 +986,7 @@
     BOOL baseline = [[NSFileManager defaultManager] fileExistsAtPath:[[directory URLByAppendingPathComponent:@"baseline.json"] path]];
     BOOL nativeEvents = [[NSFileManager defaultManager] fileExistsAtPath:[[directory URLByAppendingPathComponent:@"native-events.jsonl"] path]];
     BOOL yaraRules = [[NSFileManager defaultManager] fileExistsAtPath:[[[NSBundle mainBundle] URLForResource:@"Rules" withExtension:nil] path]];
+    BOOL detectionLab = [[NSFileManager defaultManager] fileExistsAtPath:[[[NSBundle mainBundle].resourceURL URLByAppendingPathComponent:@"Detections/fixtures"] path]];
     NSString *appPath = [NSBundle mainBundle].bundleURL.path.stringByStandardizingPath;
     BOOL installed = [appPath isEqualToString:@"/Applications/RATtler.app"] ||
         [appPath hasPrefix:@"/Applications/"];
@@ -958,12 +994,13 @@
         @"baseline": @(baseline),
         @"nativeEvents": @(nativeEvents),
         @"yaraRules": @(yaraRules),
+        @"detectionLab": @(detectionLab),
         @"recovery": @([self recoveryEnabled]),
         @"recoveryFrozen": @([self recoveryFrozen]),
         @"recoveryError": @([[NSFileManager defaultManager] fileExistsAtPath:[self recoveryErrorURL].path]),
         @"installed": @(installed),
         @"appPath": appPath ?: @"",
-        @"version": @"0.13.2",
+        @"version": @"0.14.0",
     }
             function:@"receiveCapabilities"];
 }

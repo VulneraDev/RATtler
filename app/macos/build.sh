@@ -36,6 +36,7 @@ xcrun --sdk macosx clang \
 cp "$script_dir/Info.plist" "$app_bundle/Contents/Info.plist"
 cp -R "$script_dir/Resources/Web" "$app_bundle/Contents/Resources/Web"
 cp -R "$repository_root/rules" "$app_bundle/Contents/Resources/Rules"
+cp -R "$repository_root/detections" "$app_bundle/Contents/Resources/Detections"
 cp "$repository_root/THIRD_PARTY_NOTICES.md" "$app_bundle/Contents/Resources/THIRD_PARTY_NOTICES.md"
 cp -R "$repository_root/licenses" "$app_bundle/Contents/Resources/Licenses"
 

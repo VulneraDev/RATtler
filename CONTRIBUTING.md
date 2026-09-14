@@ -24,5 +24,11 @@ negative case when practical. Never commit live malware, credentials, weaponized
 payloads, or private endpoint data. `RATtler_Safe_File_Canary` exists for testing
 the full scan path without malicious behavior.
 
+Behavioral correlation contributions must include a ReplayForge contract in
+`detections/fixtures`: expected rule IDs, expected Chainlight count, a runtime
+budget, and a negative fixture. Read the [Detection Lab guide](docs/DETECTION_LAB.md)
+before proposing one. Fixture metadata is strictly bounded and must never carry
+executable content.
+
 Security issues that could expose endpoint information should be reported
 privately as described in [`SECURITY.md`](SECURITY.md), not in a public issue.

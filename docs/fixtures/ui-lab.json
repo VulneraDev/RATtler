@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "status": "passed",
+  "summary": {"fixtures": 2, "passed": 2, "failed": 0, "events": 5, "findings": 2, "chains": 1},
+  "results": [
+    {
+      "status": "passed",
+      "fixture": {
+        "id": "staged-network-persistence",
+        "title": "Staged process reaches the network and persists",
+        "description": "Synthetic metadata exercises staged-process network and launch-agent correlations without executable content.",
+        "safety": "synthetic-no-executable-content"
+      },
+      "assertions": [
+        {"name": "finding_rules", "passed": true},
+        {"name": "chain_count", "passed": true},
+        {"name": "performance_budget", "passed": true}
+      ],
+      "chains": [
+        {
+          "chain_id": "chain-bb44fa3069aeed1218e5",
+          "severity": "critical",
+          "rule_ids": ["RAT-CORR-001", "RAT-CORR-003"],
+          "techniques": [{"id": "T1543.001", "name": "Launch Agent", "rule_id": "RAT-CORR-003"}],
+          "attack_mapping_notice": "Coverage context only; this mapping is not a verdict.",
+          "nodes": [
+            {"event_id": "event-process-001", "event_type": "process_started", "severity": "medium", "summary": "Process started: /tmp/rattler-fixture-agent"},
+            {"event_id": "event-network-001", "event_type": "connection_established", "severity": "info", "summary": "Connection established: localhost test endpoint"},
+            {"event_id": "event-persistence-001", "event_type": "persistence_added", "severity": "high", "summary": "Persistence changed: synthetic launch agent"}
+          ]
+        }
+      ]
+    },
+    {
+      "status": "passed",
+      "fixture": {
+        "id": "routine-signed-activity",
+        "title": "Routine signed application activity",
+        "description": "A negative fixture ensures an ordinary application connection stays quiet.",
+        "safety": "synthetic-no-executable-content"
+      },
+      "assertions": [
+        {"name": "finding_rules", "passed": true},
+        {"name": "chain_count", "passed": true},
+        {"name": "performance_budget", "passed": true}
+      ],
+      "chains": []
+    }
+  ]
+}

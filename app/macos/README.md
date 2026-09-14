@@ -29,6 +29,11 @@ applies the bundled community YARA rules, calculates SHA-256, inspects Mach-O
 signing, and returns explainable static evidence. Scanning is bounded and local;
 symbolic links are not followed and no content is uploaded.
 
+The Detection Lab runs the bundled ReplayForge positive and negative fixtures
+through the production correlators. Chainlight renders stable, time-ordered
+evidence and conservative ATT&CK context. Fixtures are metadata-only, bounded,
+and bundled under app Resources so the same contracts run in the UI, CLI, and CI.
+
 ## Install the app
 
 Download one ZIP from the main [README](../../README.md), open it, then drag

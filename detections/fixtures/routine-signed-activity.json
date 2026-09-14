@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "id": "routine-signed-activity",
+  "title": "Routine signed application activity",
+  "description": "A negative fixture ensures an ordinary application connection does not trigger staged-process correlations.",
+  "safety": "synthetic-no-executable-content",
+  "window_seconds": 900,
+  "events": [
+    {
+      "event_id": "event-process-safe-001",
+      "event_type": "process_started",
+      "severity": "info",
+      "observed_at": "2026-09-14T12:10:00+00:00",
+      "evidence": {
+        "pid": 7331,
+        "process_instance": "synthetic-process-safe",
+        "executable": "/Applications/Example.app/Contents/MacOS/Example",
+        "risk_reason": null,
+        "signature": "signed",
+        "team_id": "EXAMPLETEAM"
+      }
+    },
+    {
+      "event_id": "event-network-safe-001",
+      "event_type": "connection_established",
+      "severity": "info",
+      "observed_at": "2026-09-14T12:10:01+00:00",
+      "evidence": {
+        "pid": 7331,
+        "process_instance": "synthetic-process-safe",
+        "process": "Example",
+        "endpoint": "127.0.0.1:49153->127.0.0.1:443",
+        "state": "ESTABLISHED"
+      }
+    }
+  ],
+  "expected": {
+    "finding_rules": [],
+    "chain_count": 0,
+    "max_elapsed_ms": 250
+  }
+}

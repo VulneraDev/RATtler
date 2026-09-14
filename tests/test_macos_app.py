@@ -14,8 +14,8 @@ class MacOSAppSourceTests(unittest.TestCase):
         with (APP / "Info.plist").open("rb") as handle:
             info = plistlib.load(handle)
         self.assertEqual(info["CFBundleIdentifier"], "dev.vulnera.rattler")
-        self.assertEqual(info["CFBundleShortVersionString"], "0.13.2")
-        self.assertEqual(info["CFBundleVersion"], "17")
+        self.assertEqual(info["CFBundleShortVersionString"], "0.14.0")
+        self.assertEqual(info["CFBundleVersion"], "18")
         self.assertEqual(info["LSMinimumSystemVersion"], "13.0")
         self.assertTrue(info["LSMultipleInstancesProhibited"])
 
@@ -23,9 +23,9 @@ class MacOSAppSourceTests(unittest.TestCase):
         html = (APP / "Resources/Web/index.html").read_text(encoding="utf-8")
         script = (APP / "Resources/Web/app.js").read_text(encoding="utf-8")
         self.assertIn("connect-src 'none'", html)
-        for view in ("dashboard", "findings", "deep-scan", "ransomware", "bluepulse", "activity", "settings"):
+        for view in ("dashboard", "findings", "deep-scan", "detection-lab", "ransomware", "bluepulse", "activity", "settings"):
             self.assertIn('id="%s"' % view, html)
-        for handler in ("receiveReport", "receiveFileScan", "receiveCapabilities", "receiveState", "receiveResponse"):
+        for handler in ("receiveReport", "receiveFileScan", "receiveDetectionLab", "receiveCapabilities", "receiveState", "receiveResponse"):
             self.assertIn(handler, script)
         self.assertIn("Detection confidence", script)
         self.assertIn("collector heartbeat", script)
@@ -89,6 +89,16 @@ class MacOSAppSourceTests(unittest.TestCase):
         self.assertIn('metadata.version("yara-python") != "4.5.4"', build)
         self.assertIn('THIRD_PARTY_NOTICES.md', build)
 
+    def test_detection_lab_replays_bundled_safe_fixtures(self):
+        host = (APP / "Sources/main.m").read_text(encoding="utf-8")
+        build = (APP / "build.sh").read_text(encoding="utf-8")
+        script = (APP / "Resources/Web/app.js").read_text(encoding="utf-8")
+        self.assertIn('@"lab", @"--pretty", @"suite", fixtures.path', host)
+        self.assertIn('function:@"receiveDetectionLab"', host)
+        self.assertIn('cp -R "$repository_root/detections"', build)
+        self.assertIn("Same detection logic", script)
+        self.assertIn("not a verdict", script)
+
     def test_recovery_requires_native_consent_and_uses_a_new_destination(self):
         host = (APP / "Sources/main.m").read_text(encoding="utf-8")
         self.assertIn('alert.messageText = @"Enable the Recovery Vault?"', host)
@@ -102,8 +112,8 @@ class MacOSAppSourceTests(unittest.TestCase):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         build = (APP / "build.sh").read_text(encoding="utf-8")
         self.assertIn("Download **one ZIP**", readme)
-        self.assertIn("releases/download/v0.13.2/RATtler-macOS-Apple-Silicon.zip", readme)
-        self.assertIn("releases/download/v0.13.2/RATtler-macOS-Intel.zip", readme)
+        self.assertIn("releases/download/v0.14.0/RATtler-macOS-Apple-Silicon.zip", readme)
+        self.assertIn("releases/download/v0.14.0/RATtler-macOS-Intel.zip", readme)
         self.assertIn("System Settings → Privacy & Security", readme)
         self.assertIn("Open Anyway", readme)
         self.assertIn('release_architecture="Apple-Silicon"', build)
@@ -119,7 +129,7 @@ class MacOSAppSourceTests(unittest.TestCase):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         fixtures = {
             "healthy": "healthy", "risk": "risk", "bluepulse": "healthy",
-            "ransomware": "healthy", "deep-scan": "file-scan",
+            "ransomware": "healthy", "deep-scan": "file-scan", "detection-lab": "lab",
         }
         for state, fixture in fixtures.items():
             relative = "docs/images/rattler-%s.png" % state
@@ -129,7 +139,7 @@ class MacOSAppSourceTests(unittest.TestCase):
             self.assertEqual(struct.unpack(">II", image[16:24]), (1180, 760))
             with (ROOT / "docs/fixtures" / ("ui-%s.json" % fixture)).open() as handle:
                 report = json.load(handle)
-            self.assertIn(report["status"], {"healthy", "unhealthy", "risk"})
+            self.assertIn(report["status"], {"healthy", "unhealthy", "risk", "passed"})
 
 
 if __name__ == "__main__":

@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "id": "staged-network-persistence",
+  "title": "Staged process reaches the network and persists",
+  "description": "Synthetic metadata exercises the staged-process network and launch-agent correlations without executable content.",
+  "safety": "synthetic-no-executable-content",
+  "window_seconds": 900,
+  "events": [
+    {
+      "event_id": "event-process-001",
+      "event_type": "process_started",
+      "severity": "medium",
+      "observed_at": "2026-09-14T12:00:00+00:00",
+      "evidence": {
+        "pid": 4242,
+        "process_instance": "synthetic-process-a",
+        "executable": "/tmp/rattler-fixture-agent",
+        "risk_reason": "temporary directory",
+        "ancestry": []
+      }
+    },
+    {
+      "event_id": "event-network-001",
+      "event_type": "connection_established",
+      "severity": "info",
+      "observed_at": "2026-09-14T12:00:02+00:00",
+      "evidence": {
+        "pid": 4242,
+        "process_instance": "synthetic-process-a",
+        "process": "rattler-fixture-agent",
+        "endpoint": "127.0.0.1:49152->127.0.0.1:8443",
+        "state": "ESTABLISHED"
+      }
+    },
+    {
+      "event_id": "event-persistence-001",
+      "event_type": "persistence_added",
+      "severity": "high",
+      "observed_at": "2026-09-14T12:00:04+00:00",
+      "evidence": {
+        "path": "/Users/example/Library/LaunchAgents/dev.rattler.fixture.plist",
+        "executable": "/tmp/rattler-fixture-agent",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    }
+  ],
+  "expected": {
+    "finding_rules": ["RAT-CORR-001", "RAT-CORR-003"],
+    "chain_count": 1,
+    "max_elapsed_ms": 250
+  }
+}

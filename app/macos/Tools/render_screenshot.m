@@ -54,16 +54,17 @@
         @"recoveryFrozen": @([self.viewID isEqualToString:@"ransomware"]),
         @"recoveryError": @NO,
         @"installed": @YES,
-        @"version": @"0.13.2",
+        @"version": @"0.14.0",
     } options:0 error:nil];
     NSData *ready = [NSJSONSerialization dataWithJSONObject:@{
         @"phase": @"ready",
         @"message": @"Scan completed",
     } options:0 error:nil];
     BOOL fileScan = [self.viewID isEqualToString:@"deep-scan"];
-    NSString *payloadCall = fileScan
-        ? [NSString stringWithFormat:@"window.RATtler.receiveFileScan('%@');", [self.reportData base64EncodedStringWithOptions:0]]
-        : [NSString stringWithFormat:@"window.RATtler.receiveReport('%@');", [self.reportData base64EncodedStringWithOptions:0]];
+    BOOL detectionLab = [self.viewID isEqualToString:@"detection-lab"];
+    NSString *receiver = fileScan ? @"receiveFileScan" : detectionLab ? @"receiveDetectionLab" : @"receiveReport";
+    NSString *payloadCall = [NSString stringWithFormat:@"window.RATtler.%@('%@');", receiver,
+        [self.reportData base64EncodedStringWithOptions:0]];
     NSString *script = [NSString stringWithFormat:
         @"document.documentElement.classList.add('snapshot');"
          "window.RATtler.receiveCapabilities('%@');"
@@ -88,6 +89,7 @@
         if ([self.viewID isEqualToString:@"bluepulse"]) contentSelector = @"#bluepulse-content";
         if ([self.viewID isEqualToString:@"ransomware"]) contentSelector = @"#ransomware-content";
         if ([self.viewID isEqualToString:@"deep-scan"]) contentSelector = @"#file-scan-content";
+        if ([self.viewID isEqualToString:@"detection-lab"]) contentSelector = @"#detection-lab-content";
         NSString *diagnostic = [NSString stringWithFormat:
             @"JSON.stringify({children:document.querySelector('%@').childElementCount,toast:document.querySelector('#toast p').textContent,opacity:getComputedStyle(document.querySelector('#%@')).opacity})",
             contentSelector, self.viewID];
@@ -145,14 +147,14 @@ static RATSnapshotter *g_snapshotter;
 int main(int argc, const char *argv[]) {
     @autoreleasepool {
         if (argc != 4 && argc != 5) {
-            fprintf(stderr, "usage: render-screenshot PAGE REPORT OUTPUT [dashboard|bluepulse|ransomware|deep-scan]\n");
+            fprintf(stderr, "usage: render-screenshot PAGE REPORT OUTPUT [dashboard|bluepulse|ransomware|deep-scan|detection-lab]\n");
             return 2;
         }
         NSURL *page = [NSURL fileURLWithPath:@(argv[1])];
         NSData *report = [NSData dataWithContentsOfFile:@(argv[2])];
         NSURL *output = [NSURL fileURLWithPath:@(argv[3])];
         NSString *view = argc == 5 ? @(argv[4]) : @"dashboard";
-        if (![@[@"dashboard", @"bluepulse", @"ransomware", @"deep-scan"] containsObject:view]) {
+        if (![@[@"dashboard", @"bluepulse", @"ransomware", @"deep-scan", @"detection-lab"] containsObject:view]) {
             fprintf(stderr, "unsupported screenshot view\n");
             return 2;
         }

@@ -11,8 +11,8 @@ the computer unless you export a report yourself.
 
 Download **one ZIP**—not both:
 
-- [Mac with an Apple chip](https://github.com/VulneraDev/RATtler/releases/download/v0.13.2/RATtler-macOS-Apple-Silicon.zip)
-- [Mac with an Intel processor](https://github.com/VulneraDev/RATtler/releases/download/v0.13.2/RATtler-macOS-Intel.zip)
+- [Mac with an Apple chip](https://github.com/VulneraDev/RATtler/releases/download/v0.14.0/RATtler-macOS-Apple-Silicon.zip)
+- [Mac with an Intel processor](https://github.com/VulneraDev/RATtler/releases/download/v0.14.0/RATtler-macOS-Intel.zip)
 
 Not sure which Mac you have? Open **Apple menu → About This Mac**:
 
@@ -65,6 +65,26 @@ that exact rule, path, and file hash, or sent through RATtler's reviewed manual
 quarantine flow.
 
 ![RATtler Deep Scan showing explainable local file findings](docs/images/rattler-deep-scan.png)
+
+## Detection Lab
+
+The **Detection Lab** turns RATtler's detection claims into community-testable
+contracts. ReplayForge replays strictly bounded, harmless event metadata through
+the production correlation engine. Each fixture declares its expected rule IDs,
+Chainlight chain count, and runtime budget. Negative fixtures prove nearby normal
+activity stays quiet.
+
+Chainlight connects process, network, persistence, and loaded-code evidence into
+a stable time-ordered chain. Specific ATT&CK mappings are investigation context,
+not a verdict or a substitute for detection-quality testing. A privacy-scrubbed
+bundle replaces paths, endpoints, and process identities with stable one-way
+tokens.
+
+![RATtler Detection Lab showing ReplayForge and Chainlight](docs/images/rattler-detection-lab.png)
+
+Contributors can run the same suite in the app, CLI, and CI. See the
+[Detection Lab guide](docs/DETECTION_LAB.md) to add a safe positive and negative
+fixture—never live malware or executable payload content.
 
 ## BluePulse
 
@@ -143,6 +163,7 @@ Risk detected:
 - ClamAV availability on Linux and other Unix systems
 - Native memory, task-port, tracing, and remote-thread events when Apple’s
   restricted Endpoint Security entitlement is provisioned
+- ReplayForge regression tests and Chainlight time-ordered evidence chains
 
 ## Quarantine and restore
 
@@ -206,6 +227,7 @@ provisioning is in the [Endpoint Security guide](native/macos/README.md).
 python3 -m pip install -e '.[yara]'
 rattler --pretty
 rattler files scan ~/Downloads --rules rules --pretty
+rattler lab --pretty suite detections/fixtures
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 ```
 

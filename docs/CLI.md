@@ -22,6 +22,21 @@ PYTHONPATH=src python3 -m rattler --pretty
 One-shot exit codes are `0` healthy, `1` degraded, `2` unknown, and `3`
 unhealthy. `Ctrl-C` returns `130` in watch mode.
 
+## Detection Lab
+
+Replay the bundled safe fixtures through the production correlation engine:
+
+```sh
+rattler lab --pretty suite detections/fixtures
+rattler lab --pretty replay detections/fixtures/staged-network-persistence.json
+rattler lab --pretty bundle detections/fixtures/staged-network-persistence.json
+```
+
+ReplayForge returns `0` when all detection contracts pass, `1` for an assertion
+regression, and `2` for an invalid or unsafe fixture. Chainlight output includes
+stable evidence chains and conservative ATT&CK context. `bundle` emits only the
+privacy-tokenized investigation view. See the [fixture authoring guide](DETECTION_LAB.md).
+
 ## Deep Scan
 
 Install the optional YARA engine and inspect one selected file or folder:

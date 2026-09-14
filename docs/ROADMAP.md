@@ -152,7 +152,7 @@ need dedicated limits, test corpora, and false-positive budgets.
 
 ## 0.14 — Detection engineering lab
 
-Status: next.
+Status: implemented.
 
 - **ReplayForge:** replay versioned, harmless endpoint-event fixtures through the
   same correlation engine used by live scans.
