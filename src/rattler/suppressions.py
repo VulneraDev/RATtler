@@ -54,7 +54,8 @@ def _hex(value: str, lengths: Tuple[int, ...], label: str) -> str:
 def _canonical_path(path: str) -> str:
     """Normalize either a native Windows path or an absolute POSIX path."""
     if ntpath.isabs(path) and not posixpath.isabs(path):
-        return ntpath.normcase(ntpath.normpath(path))
+        normalized = os.path.realpath(path) if os.name == "nt" else ntpath.normpath(path)
+        return ntpath.normcase(normalized)
     if posixpath.isabs(path):
         return os.path.realpath(path) if os.name != "nt" else posixpath.normpath(path)
     raise ValueError("exceptions require an absolute path")
