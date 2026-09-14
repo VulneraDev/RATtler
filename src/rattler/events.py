@@ -9,7 +9,7 @@ import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from .baseline import _launchd_assets, fingerprint
 from .behavior import parse_processes, suspicious_location
@@ -67,15 +67,16 @@ def parse_sockets(output: str) -> List[SocketInfo]:
     return sockets
 
 
-def _process_snapshot() -> Dict[str, Dict[str, object]]:
+def _process_snapshot(excluded_pids: Optional[Iterable[int]] = None) -> Dict[str, Dict[str, object]]:
     command = ["/bin/ps", "-axo", "pid=,ppid=,comm="] if platform.system() == "Darwin" else ["ps", "-axo", "pid=,ppid=,comm="]
     result = run(command)
     if result is None or result.returncode != 0:
         return {}
     snapshot = {}
-    own_pid = os.getpid()
+    exclusions = {os.getpid()}
+    exclusions.update(excluded_pids or ())
     for process in parse_processes(result.stdout):
-        if process.pid == own_pid or os.path.basename(process.executable) in IGNORED_PROCESS_NAMES:
+        if process.pid in exclusions or os.path.basename(process.executable) in IGNORED_PROCESS_NAMES:
             continue
         snapshot[str(process.pid)] = {
             "ppid": process.ppid,
@@ -85,14 +86,16 @@ def _process_snapshot() -> Dict[str, Dict[str, object]]:
     return snapshot
 
 
-def _socket_snapshot() -> Dict[str, Dict[str, object]]:
+def _socket_snapshot(excluded_pids: Optional[Iterable[int]] = None) -> Dict[str, Dict[str, object]]:
     lsof = "/usr/sbin/lsof" if platform.system() == "Darwin" else "lsof"
     result = run([lsof, "-nP", "-FpcnT", "-iTCP"], timeout=15.0)
     if result is None or result.returncode not in (0, 1):
         return {}
     snapshot = {}
+    exclusions = set(excluded_pids or ())
+    exclusions.add(os.getpid())
     for item in parse_sockets(result.stdout):
-        if item.state not in ("LISTEN", "ESTABLISHED"):
+        if item.pid in exclusions or item.state not in ("LISTEN", "ESTABLISHED"):
             continue
         key = "%s|%s|%s" % (item.pid, item.state, item.endpoint)
         snapshot[key] = {
@@ -128,14 +131,18 @@ def _persistence_snapshot() -> Dict[str, Dict[str, object]]:
     return snapshot
 
 
-def _image_snapshot() -> Dict[str, Dict[str, object]]:
+def _image_snapshot(excluded_pids: Optional[Iterable[int]] = None) -> Dict[str, Dict[str, object]]:
     if platform.system() != "Darwin":
         return {}
     result = run(["/usr/sbin/lsof", "-nP", "-Fpcftn", "-d", "txt"], timeout=15.0)
     if result is None or result.returncode not in (0, 1):
         return {}
     snapshot = {}
+    exclusions = set(excluded_pids or ())
+    exclusions.add(os.getpid())
     for image in parse_loaded_images(result.stdout):
+        if image.pid in exclusions:
+            continue
         path = image.path[:-10] if image.path.endswith(" (deleted)") else image.path
         if not _user_writable_location(path, None):
             continue
@@ -147,12 +154,13 @@ def _image_snapshot() -> Dict[str, Dict[str, object]]:
     return snapshot
 
 
-def capture_snapshot() -> Dict[str, object]:
+def capture_snapshot(excluded_pids: Optional[Iterable[int]] = None) -> Dict[str, object]:
+    exclusions = set(excluded_pids or ())
     return {
-        "processes": _process_snapshot(),
-        "sockets": _socket_snapshot(),
+        "processes": _process_snapshot(exclusions),
+        "sockets": _socket_snapshot(exclusions),
         "persistence": _persistence_snapshot(),
-        "images": _image_snapshot(),
+        "images": _image_snapshot(exclusions),
     }
 
 
@@ -319,12 +327,13 @@ def update_events(
     journal_path: Optional[Path] = None,
     window_seconds: int = 900,
     journal_max_bytes: int = DEFAULT_JOURNAL_BYTES,
+    excluded_pids: Optional[Iterable[int]] = None,
 ) -> Tuple[Check, List[Event], List[Finding]]:
     observed = datetime.now(timezone.utc)
     observed_at = observed.isoformat()
     try:
         previous = _load_state(state_path)
-        current = capture_snapshot()
+        current = capture_snapshot(excluded_pids)
         if previous is None:
             _write_state(state_path, current, [])
             return Check("events", Status.HEALTHY, "event state initialized", {"events": 0}), [], []

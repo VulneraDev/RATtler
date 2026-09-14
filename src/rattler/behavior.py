@@ -79,12 +79,17 @@ def parse_processes(output: str) -> List[ProcessInfo]:
     return processes
 
 
-def process_sensor(home: Optional[str] = None) -> Tuple[Check, List[Finding], Dict[int, ProcessInfo]]:
+def process_sensor(
+    home: Optional[str] = None,
+    excluded_pids: Optional[Iterable[int]] = None,
+) -> Tuple[Check, List[Finding], Dict[int, ProcessInfo]]:
     command = ["/bin/ps", "-axo", "pid=,ppid=,comm="] if platform.system() == "Darwin" else ["ps", "-axo", "pid=,ppid=,comm="]
     result = run(command)
     if result is None or result.returncode != 0:
         return Check("processes", Status.UNKNOWN, "process inventory unavailable"), [], {}
-    processes = parse_processes(result.stdout)
+    exclusions = {os.getpid()}
+    exclusions.update(excluded_pids or ())
+    processes = [process for process in parse_processes(result.stdout) if process.pid not in exclusions]
     findings = []
     for process in processes:
         reason = suspicious_location(process.executable, home)
@@ -248,10 +253,14 @@ def network_sensor(processes: Dict[int, ProcessInfo], home: Optional[str] = None
     return Check("listeners", Status.HEALTHY, "TCP listeners inspected", {"count": len(listeners)}), findings
 
 
-def scan_behavior(home: Optional[str] = None, persistence_paths: Optional[Sequence[Path]] = None) -> BehaviorReport:
+def scan_behavior(
+    home: Optional[str] = None,
+    persistence_paths: Optional[Sequence[Path]] = None,
+    excluded_pids: Optional[Iterable[int]] = None,
+) -> BehaviorReport:
     from .injection import loaded_image_sensor
 
-    process_check, process_findings, processes = process_sensor(home)
+    process_check, process_findings, processes = process_sensor(home, excluded_pids)
     persistence_check, persistence_findings = persistence_sensor(persistence_paths, home)
     network_check, network_findings = network_sensor(processes, home)
     image_check, image_findings = loaded_image_sensor(processes, home)

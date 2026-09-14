@@ -5,6 +5,20 @@ interface. It runs the open-source RATtler engine as a child process, renders
 its structured report, and offers explicit local quarantine for eligible
 file-backed findings without uploading endpoint data.
 
+## Install the app
+
+Download one ZIP from the main [README](../../README.md), open it, then drag
+`RATtler.app` from Downloads into Applications. Launch it from Applications.
+
+The preview is ad-hoc signed but not Apple-notarized. If macOS blocks the first
+launch, open **System Settings → Privacy & Security**, scroll to **Security**,
+click **Open Anyway**, enter your password, and click **Open**. Do not disable
+Gatekeeper globally.
+
+If RATtler is launched outside Applications, the dashboard shows a move reminder.
+The app passes its exact PID to the engine, and the engine also excludes its own
+PID, so neither process is treated as an endpoint finding.
+
 ## Development build
 
 ```sh
@@ -31,14 +45,16 @@ notarized, so macOS identifies them as community preview builds. The release
 workflow builds separate Apple Silicon and Intel artifacts on GitHub-hosted
 macOS runners.
 
-## Install a GitHub release
+## Verify a GitHub release (optional)
 
-1. Download the ZIP and matching `.sha256` file for your Mac from
-   [GitHub Releases](https://github.com/VulneraDev/RATtler/releases).
-2. Keep both files together and run `shasum -a 256 -c <checksum-file>`.
-3. Unzip the download and move `RATtler.app` into Applications.
-4. On first launch, Control-click the app and choose **Open**. This is expected
-   until RATtler has an Apple Developer ID signature and notarization.
+The `.sha256` file is not required to run RATtler. To verify a download, keep
+the ZIP and its matching checksum together and run:
+
+```sh
+shasum -a 256 -c RATtler-macOS-Intel.sha256
+```
+
+Use `RATtler-macOS-Apple-Silicon.sha256` instead on an Apple-chip Mac.
 
 The app writes mode-`0600` state, journals, baselines, and reports beneath
 `~/Library/Application Support/RATtler`. Its WebKit view has a restrictive

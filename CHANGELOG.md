@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.1
+
+- Exclude RATtler's exact app and engine PIDs from process, socket, event, and
+  loaded-image findings without trusting a process name
+- Show a clear in-app reminder when RATtler is running outside Applications
+- Put download, installation, Gatekeeper, first-scan, and removal instructions
+  at the top of the README
+- Rename release downloads to plain Apple Silicon and Intel labels
+
 ## 0.8.0
 
 - Add reviewed, reversible file quarantine to the CLI and native macOS app

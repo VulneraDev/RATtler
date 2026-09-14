@@ -103,6 +103,8 @@
     } else if ([action isEqualToString:@"reveal"]) {
         NSURL *directory = [self applicationDataDirectory];
         [[NSWorkspace sharedWorkspace] activateFileViewerSelectingURLs:@[directory]];
+    } else if ([action isEqualToString:@"revealApp"]) {
+        [[NSWorkspace sharedWorkspace] activateFileViewerSelectingURLs:@[[NSBundle mainBundle].bundleURL]];
     } else if ([action isEqualToString:@"revealQuarantine"]) {
         NSURL *directory = [[self applicationDataDirectory] URLByAppendingPathComponent:@"quarantine"
                                                                               isDirectory:YES];
@@ -145,7 +147,8 @@
     NSURL *baseline = [directory URLByAppendingPathComponent:@"baseline.json"];
     NSURL *nativeEvents = [directory URLByAppendingPathComponent:@"native-events.jsonl"];
     NSMutableArray<NSString *> *arguments = [NSMutableArray arrayWithArray:@[
-        @"--state", state.path, @"--journal", journal.path, @"--pretty"
+        @"--state", state.path, @"--journal", journal.path,
+        @"--exclude-pid", [NSString stringWithFormat:@"%d", getpid()], @"--pretty"
     ]];
     if ([[NSFileManager defaultManager] fileExistsAtPath:baseline.path]) {
         [arguments addObjectsFromArray:@[@"--baseline", baseline.path]];
@@ -499,7 +502,16 @@
     NSURL *directory = [self applicationDataDirectory];
     BOOL baseline = [[NSFileManager defaultManager] fileExistsAtPath:[[directory URLByAppendingPathComponent:@"baseline.json"] path]];
     BOOL nativeEvents = [[NSFileManager defaultManager] fileExistsAtPath:[[directory URLByAppendingPathComponent:@"native-events.jsonl"] path]];
-    [self sendObject:@{@"baseline": @(baseline), @"nativeEvents": @(nativeEvents), @"version": @"0.8.0"}
+    NSString *appPath = [NSBundle mainBundle].bundleURL.path.stringByStandardizingPath;
+    BOOL installed = [appPath isEqualToString:@"/Applications/RATtler.app"] ||
+        [appPath hasPrefix:@"/Applications/"];
+    [self sendObject:@{
+        @"baseline": @(baseline),
+        @"nativeEvents": @(nativeEvents),
+        @"installed": @(installed),
+        @"appPath": appPath ?: @"",
+        @"version": @"0.8.1",
+    }
             function:@"receiveCapabilities"];
 }
 

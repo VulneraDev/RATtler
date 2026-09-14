@@ -41,7 +41,7 @@
       </nav>
       <div class="sidebar-status">
         <span id="sidebar-dot" class="status-dot unknown"></span>
-        <div><strong id="sidebar-label">Awaiting scan</strong><small>Community Preview <span id="app-version">0.8.0</span></small></div>
+        <div><strong id="sidebar-label">Awaiting scan</strong><small>Community Preview <span id="app-version">0.8.1</span></small></div>
       </div>
     </aside>
 
@@ -93,6 +93,8 @@
           <div class="settings-stack">
             <article class="panel settings-panel">
               <h3>Monitoring</h3>
+              <div class="setting-row"><span class="setting-icon">→</span><div><strong>Installation</strong><p id="installation-description">Checking where RATtler is running.</p></div><span id="installation-state" class="local-badge">CHECKING</span></div>
+              <div class="divider"></div>
               <div class="setting-row"><span class="setting-icon">↻</span><div><strong>Scan automatically</strong><p>Refresh endpoint posture every 60 seconds while RATtler is open.</p></div><label class="switch"><input id="auto-scan" type="checkbox"><span></span></label></div>
               <div class="divider"></div>
               <div class="setting-row"><span class="setting-icon">⌕</span><div><strong>Integrity baseline</strong><p id="baseline-description">Create this only after reviewing a clean endpoint scan.</p></div><button id="baseline-button" class="quiet-button">Create baseline</button></div>

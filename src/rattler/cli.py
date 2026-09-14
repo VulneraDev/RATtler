@@ -40,6 +40,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--journal-max-bytes", type=int, default=10485760, help="rotate journal above this size")
     parser.add_argument("--event-window", type=int, default=900, help="correlation window in seconds")
     parser.add_argument("--native-events", metavar="PATH", help="ingest native Endpoint Security JSONL")
+    parser.add_argument(
+        "--exclude-pid", metavar="PID", type=int, action="append", default=[],
+        help="exclude one trusted host process PID (repeatable)",
+    )
     return parser
 
 
@@ -60,6 +64,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         _parser().error("--event-window must be greater than zero")
     if args.journal_max_bytes <= 0:
         _parser().error("--journal-max-bytes must be greater than zero")
+    if any(pid <= 0 for pid in args.exclude_pid):
+        _parser().error("--exclude-pid values must be greater than zero")
     if args.journal and not args.state:
         _parser().error("--journal requires --state")
     if args.native_events and not args.state:
@@ -78,7 +84,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     previous = None
     try:
         while True:
-            behavior = scan_behavior()
+            behavior = scan_behavior(excluded_pids=args.exclude_pid)
             if args.baseline:
                 baseline_check, baseline_findings = check_baseline(Path(args.baseline))
                 behavior = BehaviorReport(
@@ -91,6 +97,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     Path(args.state), Path(args.journal) if args.journal else None,
                     args.event_window,
                     args.journal_max_bytes,
+                    args.exclude_pid,
                 )
                 behavior = BehaviorReport(
                     sensors=behavior.sensors + [event_check],

@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const state = { report: null, quarantine: [], capabilities: { baseline: false, nativeEvents: false, version: "0.8.0" }, phase: "starting", autoTimer: null };
+  const state = { report: null, quarantine: [], capabilities: { baseline: false, nativeEvents: false, installed: true, appPath: "", version: "0.8.1" }, phase: "starting", autoTimer: null };
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const esc = value => String(value ?? "—").replace(/[&<>'"]/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[char]));
@@ -41,9 +41,10 @@
     const priority = findings.slice(0,4).map(findingRow).join("") || `<div class="empty"><div><div class="empty-icon">✓</div><h3>No behavioral findings</h3><p>No current indicator crossed RATtler’s alert threshold.</p></div></div>`;
     const coverage = checks.slice(0,6).map(checkRow).join("");
     const nativeNotice = state.capabilities.nativeEvents ? "" : `<div class="notice warning"><span>◇</span><div><strong>Native telemetry pending</strong><p>Apple’s restricted entitlement is not active. Snapshot and integrity sensors remain available.</p></div></div>`;
+    const installNotice = state.capabilities.installed ? "" : `<div class="notice install-notice"><span>→</span><div><strong>Finish installing RATtler</strong><p>Close RATtler, drag it into Applications, then open it from Applications. This prevents download-location alerts.</p></div><button id="show-app-button" class="quiet-button">Show RATtler</button></div>`;
     $("#dashboard-content").className = "";
     $("#dashboard-content").innerHTML = `
-      <article class="panel hero ${esc(report.status)}"><div class="shield-orbit"></div><div class="hero-copy"><div class="status-kicker">${esc(statusLabel(report.status).toUpperCase())}</div><h2>${esc(heroCopy[0])}</h2><p>${esc(heroCopy[1])}</p><div class="hostline">▣ ${esc(protection.hostname || "This Mac")} &nbsp;•&nbsp; ${esc(observed)}</div></div><button class="scan-button dashboard-scan"><span>↻</span>Scan now</button></article>
+      <article class="panel hero ${esc(report.status)}"><div class="shield-orbit"></div><div class="hero-copy"><div class="status-kicker">${esc(statusLabel(report.status).toUpperCase())}</div><h2>${esc(heroCopy[0])}</h2><p>${esc(heroCopy[1])}</p><div class="hostline">▣ ${esc(protection.hostname || "This Mac")} &nbsp;•&nbsp; ${esc(observed)}</div></div><button class="scan-button dashboard-scan"><span>↻</span>Scan now</button></article>${installNotice}
       <div class="metrics">
         ${metric(findings.length,"Findings",findings.length ? "Review recommended" : "No active indicators","alert",findings.length ? "warning" : "")}
         ${metric(high,"High priority","Critical and high","shield",high ? "danger" : "")}
@@ -52,6 +53,7 @@
       </div>
       <div class="dashboard-grid"><article class="panel card-block"><div class="card-title"><div><h3>Priority findings</h3><p>Indicators that deserve attention first</p></div><span>${findings.length} total</span></div>${priority}</article><article class="panel card-block"><div class="card-title"><div><h3>Sensor coverage</h3><p>Latest health by layer</p></div></div>${coverage}${nativeNotice}</article></div>`;
     $(".dashboard-scan")?.addEventListener("click", () => native("scan"));
+    $("#show-app-button")?.addEventListener("click", () => native("revealApp"));
   }
 
   const metric = (value,label,detail,iconName,kind) => `<article class="panel metric ${kind}"><span class="metric-icon">${icon(iconName)}</span><div><strong>${esc(value)}</strong><label>${esc(label)}</label><small>${esc(detail)}</small></div></article>`;
@@ -103,6 +105,9 @@
     $("#app-version").textContent = state.capabilities.version;
     $("#baseline-description").textContent = state.capabilities.baseline ? "A reviewed baseline is active and checked during every scan." : "Create this only after reviewing a clean endpoint scan.";
     $("#baseline-button").textContent = state.capabilities.baseline ? "Replace baseline" : "Create baseline";
+    $("#installation-description").textContent = state.capabilities.installed ? "RATtler is running from Applications." : "Close RATtler, drag it into Applications, then reopen it there.";
+    $("#installation-state").textContent = state.capabilities.installed ? "INSTALLED" : "MOVE APP";
+    $("#installation-state").classList.toggle("warning", !state.capabilities.installed);
     $("#native-settings").innerHTML = nativeCard();
     const active = state.quarantine.filter(entry => entry.status === "quarantined");
     $("#quarantine-list").innerHTML = active.length ? active.map(entry => `<div class="quarantine-entry"><div><strong title="${esc(entry.original_path)}">${esc(entry.original_path)}</strong><small>${esc(String(entry.sha256 || "").slice(0,16))}… · ${esc(entry.id)}</small></div><button class="quiet-button restore-button" data-id="${esc(entry.id)}">Review restore</button></div>`).join("") : `<span>No quarantined files are awaiting restore.</span>`;

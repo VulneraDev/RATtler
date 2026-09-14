@@ -3,10 +3,12 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from rattler.events import (
     _append_journal,
+    _process_snapshot,
     correlate,
     diff_snapshots,
     parse_sockets,
@@ -55,6 +57,18 @@ class EventDiffTests(unittest.TestCase):
 
 
 class EventStateTests(unittest.TestCase):
+    @patch("rattler.events.run")
+    def test_process_snapshot_excludes_engine_and_host_pid(self, mocked_run):
+        mocked_run.return_value = SimpleNamespace(
+            returncode=0,
+            stdout=(
+                f"{os.getpid()} 1 /tmp/rattler-engine\n"
+                "424242 1 /tmp/RATtler.app/Contents/MacOS/RATtler\n"
+                "525252 1 /tmp/review-me\n"
+            ),
+        )
+        self.assertEqual(set(_process_snapshot({424242})), {"525252"})
+
     @patch("rattler.events.capture_snapshot")
     def test_first_run_initializes_private_state_without_event_flood(self, mocked_capture):
         mocked_capture.return_value = {"processes": {}, "sockets": {}, "persistence": {}, "images": {}}

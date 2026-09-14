@@ -48,7 +48,8 @@
     NSData *capabilities = [NSJSONSerialization dataWithJSONObject:@{
         @"baseline": @YES,
         @"nativeEvents": @YES,
-        @"version": @"0.8.0",
+        @"installed": @YES,
+        @"version": @"0.8.1",
     } options:0 error:nil];
     NSData *ready = [NSJSONSerialization dataWithJSONObject:@{
         @"phase": @"ready",

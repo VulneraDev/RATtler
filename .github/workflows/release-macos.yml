@@ -54,4 +54,4 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --title "RATtler $GITHUB_REF_NAME Community Preview" \
             --prerelease \
-            --notes "Ad-hoc signed, non-notarized macOS Community Preview. Includes local behavioral scanning, integrity baselines, event correlation, findings, sensor health, activity history, report export, and reviewed reversible file quarantine. Execution prevention and live Endpoint Security telemetry remain entitlement-dependent."
+            --notes "Download one ZIP: Apple-Silicon for M-series Macs, or Intel for Intel Macs. Open the ZIP, drag RATtler.app into Applications, and launch it there. If macOS blocks the first launch, use System Settings > Privacy & Security > Open Anyway. This preview includes local scanning, findings, event history, report export, and reviewed reversible quarantine. Execution prevention and live Endpoint Security telemetry remain entitlement-dependent."

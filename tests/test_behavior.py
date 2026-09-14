@@ -1,7 +1,9 @@
+import os
 import plistlib
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from rattler.assessment import build_assessment
@@ -10,6 +12,7 @@ from rattler.behavior import (
     _parse_lsof,
     inspect_launchd_file,
     parse_processes,
+    process_sensor,
     suspicious_location,
 )
 from rattler.model import BehaviorReport, Check, Finding, Severity, Status
@@ -54,6 +57,20 @@ class ProcessSensorTests(unittest.TestCase):
     def test_deduplicates_lsof_records(self):
         output = "p123\ncserver\nn*:4444\nn*:4444\n"
         self.assertEqual(_parse_lsof(output), [(123, "server", "*:4444")])
+
+    @patch("rattler.behavior.run")
+    def test_process_sensor_excludes_engine_and_exact_host_pid(self, mocked_run):
+        mocked_run.return_value = SimpleNamespace(
+            returncode=0,
+            stdout=(
+                f"{os.getpid()} 1 /tmp/rattler-engine\n"
+                "424242 1 /tmp/RATtler.app/Contents/MacOS/RATtler\n"
+                "525252 1 /tmp/review-me\n"
+            ),
+        )
+        _check, findings, processes = process_sensor("/Users/test", {424242})
+        self.assertEqual(set(processes), {525252})
+        self.assertEqual([finding.evidence["pid"] for finding in findings], [525252])
 
 
 class PersistenceTests(unittest.TestCase):

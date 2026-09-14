@@ -74,8 +74,13 @@ iconutil -c icns "$iconset" -o "$app_bundle/Contents/Resources/RATtlerIcon.icns"
 codesign --force --deep --sign - "$app_bundle"
 
 if $archive; then
-    zip_artifact="$build_root/RATtler-0.8.0-macOS-$architecture.zip"
-    checksum_artifact="$build_root/RATtler-0.8.0-macOS-$architecture.sha256"
+    case "$architecture" in
+        arm64) release_architecture="Apple-Silicon" ;;
+        x86_64) release_architecture="Intel" ;;
+        *) echo "unsupported release architecture: $architecture" >&2; exit 2 ;;
+    esac
+    zip_artifact="$build_root/RATtler-macOS-$release_architecture.zip"
+    checksum_artifact="$build_root/RATtler-macOS-$release_architecture.sha256"
     ditto -c -k --norsrc --noextattr --noqtn --noacl --keepParent "$app_bundle" "$zip_artifact"
     (
         cd "$build_root"

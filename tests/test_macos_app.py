@@ -14,8 +14,8 @@ class MacOSAppSourceTests(unittest.TestCase):
         with (APP / "Info.plist").open("rb") as handle:
             info = plistlib.load(handle)
         self.assertEqual(info["CFBundleIdentifier"], "dev.vulnera.rattler")
-        self.assertEqual(info["CFBundleShortVersionString"], "0.8.0")
-        self.assertEqual(info["CFBundleVersion"], "8")
+        self.assertEqual(info["CFBundleShortVersionString"], "0.8.1")
+        self.assertEqual(info["CFBundleVersion"], "9")
         self.assertEqual(info["LSMinimumSystemVersion"], "13.0")
         self.assertTrue(info["LSMultipleInstancesProhibited"])
 
@@ -36,6 +36,25 @@ class MacOSAppSourceTests(unittest.TestCase):
         self.assertIn('if ([alert runModal] != NSAlertFirstButtonReturn)', host)
         self.assertIn('alert.messageText = @"Restore this quarantined file?"', host)
         self.assertIn('@"response", @"restore", identifier', host)
+
+    def test_app_excludes_only_its_process_id_and_explains_installation(self):
+        host = (APP / "Sources/main.m").read_text(encoding="utf-8")
+        script = (APP / "Resources/Web/app.js").read_text(encoding="utf-8")
+        self.assertIn('@"--exclude-pid", [NSString stringWithFormat:@"%d", getpid()]', host)
+        self.assertIn('@"installed": @(installed)', host)
+        self.assertIn("Finish installing RATtler", script)
+        self.assertNotIn("excluded_process_name", host)
+
+    def test_download_and_gatekeeper_instructions_are_plain(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        build = (APP / "build.sh").read_text(encoding="utf-8")
+        self.assertIn("Download **one ZIP**", readme)
+        self.assertIn("releases/latest/download/RATtler-macOS-Apple-Silicon.zip", readme)
+        self.assertIn("releases/latest/download/RATtler-macOS-Intel.zip", readme)
+        self.assertIn("System Settings → Privacy & Security", readme)
+        self.assertIn("Open Anyway", readme)
+        self.assertIn('release_architecture="Apple-Silicon"', build)
+        self.assertIn('release_architecture="Intel"', build)
 
     def test_native_host_does_not_invoke_a_shell(self):
         host = (APP / "Sources/main.m").read_text(encoding="utf-8")
