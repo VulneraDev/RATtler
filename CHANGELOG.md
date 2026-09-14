@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.1
+
+- Add a self-cleaning, loopback-only macOS validation canary
+- Document safe end-to-end detection testing
+- Recognize both macOS spellings of per-user temporary directories
+
 ## 0.5.0
 
 - Persist process, TCP socket, launchd, and loaded-image snapshots

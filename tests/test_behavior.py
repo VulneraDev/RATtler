@@ -34,6 +34,10 @@ class ProcessSensorTests(unittest.TestCase):
             suspicious_location("/Users/test/Downloads/tool", "/Users/test"),
             "Downloads directory",
         )
+        self.assertEqual(
+            suspicious_location("/var/folders/ab/random/T/dropper", "/Users/test"),
+            "per-user temporary directory",
+        )
         self.assertIsNone(suspicious_location("/Applications/Safari.app/Safari", "/Users/test"))
 
     def test_parses_lsof_machine_output(self):

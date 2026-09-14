@@ -49,7 +49,7 @@ def suspicious_location(path: str, home: Optional[str] = None) -> Optional[str]:
         if _under(path, root):
             return reason
     real_path = os.path.normpath(os.path.abspath(path))
-    if real_path.startswith("/private/var/folders/") and "/T/" in real_path:
+    if real_path.startswith(("/private/var/folders/", "/var/folders/")) and "/T/" in real_path:
         return "per-user temporary directory"
     if path.endswith(" (deleted)"):
         return "deleted executable image"

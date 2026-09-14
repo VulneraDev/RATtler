@@ -67,6 +67,28 @@ are written with mode `0600` and never uploaded by RATtler. The JSONL journal
 rotates to `.1` at 10 MiB by default; use `--journal-max-bytes` to adjust it. Run
 only one state writer per path.
 
+## Safe validation canary
+
+`tools/safe_canary.py` locally compiles a tiny helper and emulates three RAT
+indicators without containing malicious logic: execution from a temporary
+directory, a loopback-only TCP connection, and
+a disabled LaunchAgent that is never loaded. It runs for at most five minutes and
+removes its process, temporary directory, and labeled plist in a `finally` block.
+
+Initialize event state before starting the canary, run the canary in another
+terminal, then scan using the same state file:
+
+```sh
+rattler --state /tmp/rattler-canary-state.json
+python3 tools/safe_canary.py --duration 45
+rattler --state /tmp/rattler-canary-state.json --pretty
+```
+
+RATtler should report snapshot findings plus `RAT-CORR-001` for the staged
+process and loopback connection and `RAT-CORR-003` for the disabled persistence
+artifact. The canary does not invoke `launchctl`, accept remote traffic, transfer
+data, or install executable persistence.
+
 Without installing:
 
 ```sh
