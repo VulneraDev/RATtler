@@ -6,17 +6,19 @@
 @property(nonatomic, strong) WKWebView *webView;
 @property(nonatomic, strong) NSData *reportData;
 @property(nonatomic, strong) NSURL *outputURL;
-- (instancetype)initWithPage:(NSURL *)page report:(NSData *)report output:(NSURL *)output;
+@property(nonatomic, copy) NSString *viewID;
+- (instancetype)initWithPage:(NSURL *)page report:(NSData *)report output:(NSURL *)output view:(NSString *)view;
 - (void)start;
 @end
 
 @implementation RATSnapshotter
 
-- (instancetype)initWithPage:(NSURL *)page report:(NSData *)report output:(NSURL *)output {
+- (instancetype)initWithPage:(NSURL *)page report:(NSData *)report output:(NSURL *)output view:(NSString *)view {
     self = [super init];
     if (self) {
         _reportData = report;
         _outputURL = output;
+        _viewID = [view copy];
 
         WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = NO;
@@ -49,7 +51,7 @@
         @"baseline": @YES,
         @"nativeEvents": @YES,
         @"installed": @YES,
-        @"version": @"0.8.1",
+        @"version": @"0.8.2",
     } options:0 error:nil];
     NSData *ready = [NSJSONSerialization dataWithJSONObject:@{
         @"phase": @"ready",
@@ -59,17 +61,22 @@
         @"document.documentElement.classList.add('snapshot');"
          "window.RATtler.receiveCapabilities('%@');"
          "window.RATtler.receiveReport('%@');"
-         "window.RATtler.receiveState('%@');",
+         "window.RATtler.receiveState('%@');"
+         "document.querySelector('[data-view=\"%@\"]')?.click();",
         [capabilities base64EncodedStringWithOptions:0],
         [self.reportData base64EncodedStringWithOptions:0],
-        [ready base64EncodedStringWithOptions:0]];
+        [ready base64EncodedStringWithOptions:0],
+        self.viewID];
     [self.webView evaluateJavaScript:script completionHandler:^(id value, NSError *error) {
         (void)value;
         if (error != nil) {
             [self finishWithError:error.localizedDescription];
             return;
         }
-        NSString *diagnostic = @"JSON.stringify({children:document.querySelector('#dashboard-content').childElementCount,toast:document.querySelector('#toast p').textContent,opacity:getComputedStyle(document.querySelector('#dashboard')).opacity})";
+        NSString *contentSelector = [self.viewID isEqualToString:@"bluepulse"] ? @"#bluepulse-content" : @"#dashboard-content";
+        NSString *diagnostic = [NSString stringWithFormat:
+            @"JSON.stringify({children:document.querySelector('%@').childElementCount,toast:document.querySelector('#toast p').textContent,opacity:getComputedStyle(document.querySelector('#%@')).opacity})",
+            contentSelector, self.viewID];
         [self.webView evaluateJavaScript:diagnostic completionHandler:^(id result, NSError *diagnosticError) {
             if (diagnosticError != nil || ![result isKindOfClass:[NSString class]]) {
                 [self finishWithError:diagnosticError.localizedDescription ?: @"Could not validate the rendered interface"];
@@ -123,20 +130,25 @@ static RATSnapshotter *g_snapshotter;
 
 int main(int argc, const char *argv[]) {
     @autoreleasepool {
-        if (argc != 4) {
-            fprintf(stderr, "usage: render-screenshot PAGE REPORT OUTPUT\n");
+        if (argc != 4 && argc != 5) {
+            fprintf(stderr, "usage: render-screenshot PAGE REPORT OUTPUT [dashboard|bluepulse]\n");
             return 2;
         }
         NSURL *page = [NSURL fileURLWithPath:@(argv[1])];
         NSData *report = [NSData dataWithContentsOfFile:@(argv[2])];
         NSURL *output = [NSURL fileURLWithPath:@(argv[3])];
+        NSString *view = argc == 5 ? @(argv[4]) : @"dashboard";
+        if (![@[@"dashboard", @"bluepulse"] containsObject:view]) {
+            fprintf(stderr, "unsupported screenshot view\n");
+            return 2;
+        }
         if (report == nil) {
             fprintf(stderr, "could not read report fixture\n");
             return 2;
         }
         [NSApplication sharedApplication];
         NSApp.activationPolicy = NSApplicationActivationPolicyProhibited;
-        g_snapshotter = [[RATSnapshotter alloc] initWithPage:page report:report output:output];
+        g_snapshotter = [[RATSnapshotter alloc] initWithPage:page report:report output:output view:view];
         [g_snapshotter start];
         return 0;
     }

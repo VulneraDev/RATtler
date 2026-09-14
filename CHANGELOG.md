@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.2
+
+- Add BluePulse detection-confidence scoring alongside threat status
+- Verify available protection and behavioral sensors, event continuity, and
+  local monitoring-state permissions on every scan
+- Detect stale reports in the app without confusing visibility with malware
+- Add a 15-second native collector heartbeat and degrade coverage when the
+  stream is older than 45 seconds
+- Consume heartbeat records without adding noise to the activity timeline
+- Add a dedicated BluePulse interface and reproducible documentation screenshot
+
 ## 0.8.1
 
 - Exclude RATtler's exact app and engine PIDs from process, socket, event, and

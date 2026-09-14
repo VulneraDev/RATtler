@@ -20,6 +20,21 @@ This layer deliberately refuses protected operating-system paths, links,
 non-regular files, hard-linked files, targets inside the evidence store, changed
 targets, and cross-filesystem moves.
 
+## 0.8.2 — BluePulse sensor assurance
+
+Status: implemented.
+
+- Score confidence independently from threat findings.
+- Surface unavailable or unhealthy defensive layers by name.
+- Verify private local state, cursor, journal, and baseline permissions.
+- Detect native collector stoppage with a bounded heartbeat age.
+- Retain Endpoint Security sequence-gap accounting without timeline noise.
+- Mark stale app reports and unsafe app placement as confidence problems.
+
+BluePulse provides evidence within RATtler's current privilege boundary. It does
+not claim same-user tamper resistance or background protection while the app is
+closed; those require the signed system-extension design below.
+
 ## 0.9 — Endpoint Security prevention preview
 
 Status: design and entitlement gate.
@@ -79,6 +94,18 @@ Every action will require:
 Network isolation, process termination, persistence removal, and arbitrary file
 collection remain out of the first fleet release because their blast radius and
 privacy requirements need separate design and testing.
+
+## Research backlog
+
+The other blue-team concepts remain recorded for later exploration:
+
+- **Chainlight:** visual, cross-source attack chains with portable temporal rules.
+- **HoneyHome:** harmless endpoint decoys that alert when opened or copied.
+- **ExtensionWatch:** browser and IDE extension permission and publisher drift.
+- **ReplayForge:** safe synthetic event replay for testing detections in CI.
+
+These are ideas, not shipped RATtler capabilities. Each needs its own privacy,
+false-positive, and safe-validation design before implementation.
 
 ## Release gates
 

@@ -14,8 +14,8 @@ class MacOSAppSourceTests(unittest.TestCase):
         with (APP / "Info.plist").open("rb") as handle:
             info = plistlib.load(handle)
         self.assertEqual(info["CFBundleIdentifier"], "dev.vulnera.rattler")
-        self.assertEqual(info["CFBundleShortVersionString"], "0.8.1")
-        self.assertEqual(info["CFBundleVersion"], "9")
+        self.assertEqual(info["CFBundleShortVersionString"], "0.8.2")
+        self.assertEqual(info["CFBundleVersion"], "10")
         self.assertEqual(info["LSMinimumSystemVersion"], "13.0")
         self.assertTrue(info["LSMultipleInstancesProhibited"])
 
@@ -23,10 +23,12 @@ class MacOSAppSourceTests(unittest.TestCase):
         html = (APP / "Resources/Web/index.html").read_text(encoding="utf-8")
         script = (APP / "Resources/Web/app.js").read_text(encoding="utf-8")
         self.assertIn("connect-src 'none'", html)
-        for view in ("dashboard", "findings", "sensors", "activity", "settings"):
+        for view in ("dashboard", "findings", "bluepulse", "activity", "settings"):
             self.assertIn('id="%s"' % view, html)
         for handler in ("receiveReport", "receiveCapabilities", "receiveState", "receiveResponse"):
             self.assertIn(handler, script)
+        self.assertIn("Detection confidence", script)
+        self.assertIn("collector heartbeat", script)
 
     def test_quarantine_requires_native_review_and_exact_hash(self):
         host = (APP / "Sources/main.m").read_text(encoding="utf-8")
@@ -49,8 +51,8 @@ class MacOSAppSourceTests(unittest.TestCase):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         build = (APP / "build.sh").read_text(encoding="utf-8")
         self.assertIn("Download **one ZIP**", readme)
-        self.assertIn("releases/download/v0.8.1/RATtler-macOS-Apple-Silicon.zip", readme)
-        self.assertIn("releases/download/v0.8.1/RATtler-macOS-Intel.zip", readme)
+        self.assertIn("releases/download/v0.8.2/RATtler-macOS-Apple-Silicon.zip", readme)
+        self.assertIn("releases/download/v0.8.2/RATtler-macOS-Intel.zip", readme)
         self.assertIn("System Settings → Privacy & Security", readme)
         self.assertIn("Open Anyway", readme)
         self.assertIn('release_architecture="Apple-Silicon"', build)
@@ -64,13 +66,14 @@ class MacOSAppSourceTests(unittest.TestCase):
 
     def test_readme_screenshots_are_reproducible_pngs(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        for state in ("healthy", "risk"):
+        fixtures = {"healthy": "healthy", "risk": "risk", "bluepulse": "healthy"}
+        for state, fixture in fixtures.items():
             relative = "docs/images/rattler-%s.png" % state
             image = (ROOT / relative).read_bytes()
             self.assertIn(relative, readme)
             self.assertEqual(image[:8], b"\x89PNG\r\n\x1a\n")
             self.assertEqual(struct.unpack(">II", image[16:24]), (1180, 760))
-            with (ROOT / "docs/fixtures" / ("ui-%s.json" % state)).open() as handle:
+            with (ROOT / "docs/fixtures" / ("ui-%s.json" % fixture)).open() as handle:
                 report = json.load(handle)
             self.assertIn(report["status"], {"healthy", "unhealthy"})
 

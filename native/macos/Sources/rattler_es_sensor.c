@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 static FILE *g_output = NULL;
@@ -179,6 +180,24 @@ static void emit_event(const es_message_t *message) {
     funlockfile(g_output);
 }
 
+static void emit_heartbeat(void) {
+    struct timespec timestamp;
+    if (g_output == NULL || clock_gettime(CLOCK_REALTIME, &timestamp) != 0) {
+        return;
+    }
+    flockfile(g_output);
+    fputc('{', g_output);
+    fputs("\"schema\":1,\"sensor\":\"rattler-es\",", g_output);
+    fprintf(g_output, "\"timestamp_ns\":%lld,",
+            (long long)timestamp.tv_sec * 1000000000LL + timestamp.tv_nsec);
+    fputs("\"message_version\":0,\"event_type\":\"heartbeat\",\"event_type_id\":0,", g_output);
+    fprintf(g_output, "\"sequence\":0,\"global_sequence\":%llu,", g_last_global_sequence);
+    fprintf(g_output, "\"dropped_since_previous\":0,\"pid\":%d,", getpid());
+    fputs("\"path\":\"rattler-es-sensor\"}\n", g_output);
+    fflush(g_output);
+    funlockfile(g_output);
+}
+
 static const char *client_error(es_new_client_result_t result) {
     switch (result) {
         case ES_NEW_CLIENT_RESULT_ERR_NOT_ENTITLED: return "missing Endpoint Security entitlement";
@@ -278,6 +297,22 @@ int main(int argc, char **argv) {
             flush_output();
         });
         dispatch_resume(flush_timer);
+
+        dispatch_source_t heartbeat_timer = dispatch_source_create(
+            DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
+        if (heartbeat_timer == NULL) {
+            fprintf(stderr, "rattler-es-sensor: could not create heartbeat timer\n");
+            es_delete_client(client);
+            close_output();
+            return 4;
+        }
+        dispatch_source_set_timer(
+            heartbeat_timer, dispatch_time(DISPATCH_TIME_NOW, 0),
+            15 * NSEC_PER_SEC, NSEC_PER_SEC);
+        dispatch_source_set_event_handler(heartbeat_timer, ^{
+            emit_heartbeat();
+        });
+        dispatch_resume(heartbeat_timer);
     }
 
     signal(SIGINT, SIG_IGN);

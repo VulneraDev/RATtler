@@ -19,10 +19,11 @@ SCHEMA_VERSION = 1
 MAX_CURSOR_BYTES = 16 * 1024 * 1024
 MAX_READ_BYTES = 16 * 1024 * 1024
 MAX_LINE_BYTES = 1024 * 1024
+HEARTBEAT_STALE_SECONDS = 45
 ALLOWED_EVENTS = {
     "exec", "fork", "exit", "mmap", "mprotect", "get_task",
     "get_task_read", "get_task_inspect", "trace",
-    "remote_thread_create", "cs_invalidated",
+    "remote_thread_create", "cs_invalidated", "heartbeat",
 }
 
 
@@ -217,9 +218,16 @@ def ingest_native_events(
             if not stat.S_ISREG(metadata.st_mode):
                 raise ValueError("native event stream must be a regular file")
             cursor = _load_cursor(cursor_path)
+            heartbeat_age = max(0.0, datetime.now(timezone.utc).timestamp() - metadata.st_mtime)
             if cursor is None:
                 _write_cursor(cursor_path, metadata.st_dev, metadata.st_ino, metadata.st_size, [])
-                return Check("native_events", Status.HEALTHY, "native event cursor initialized", {"events": 0}), [], []
+                heartbeat_stale = heartbeat_age > HEARTBEAT_STALE_SECONDS
+                return Check(
+                    "native_events",
+                    Status.DEGRADED if heartbeat_stale else Status.HEALTHY,
+                    "native sensor heartbeat is stale" if heartbeat_stale else "native event cursor initialized",
+                    {"events": 0, "heartbeats": 0, "heartbeat_age_seconds": round(heartbeat_age, 1)},
+                ), [], []
             offset = int(cursor.get("offset", 0))
             if cursor.get("device") != metadata.st_dev or cursor.get("inode") != metadata.st_ino or metadata.st_size < offset:
                 offset = 0
@@ -235,6 +243,7 @@ def ingest_native_events(
         events = []
         findings = []
         malformed = 0
+        heartbeats = 0
         position = offset
         for line in complete.splitlines(keepends=True):
             raw_line = line.rstrip(b"\r\n")
@@ -250,6 +259,9 @@ def ingest_native_events(
                 if not isinstance(raw, dict):
                     raise ValueError("event is not an object")
                 event, direct = translate_native_event(raw, identity)
+                if event.event_type == "native_heartbeat":
+                    heartbeats += 1
+                    continue
                 events.append(event)
                 findings.extend(direct)
             except (UnicodeDecodeError, json.JSONDecodeError, ValueError, TypeError, OverflowError):
@@ -266,11 +278,14 @@ def ingest_native_events(
             _append_journal(journal_path, emitted, journal_max_bytes)
         _write_cursor(cursor_path, metadata.st_dev, metadata.st_ino, next_offset, recent + events)
         remaining = max(0, final_size - next_offset)
-        sensor_status = Status.DEGRADED if malformed or remaining else Status.HEALTHY
+        heartbeat_stale = heartbeat_age > HEARTBEAT_STALE_SECONDS
+        sensor_status = Status.DEGRADED if malformed or remaining or heartbeat_stale else Status.HEALTHY
         return (
-            Check("native_events", sensor_status, "native events ingested",
+            Check("native_events", sensor_status,
+                  "native sensor heartbeat is stale" if heartbeat_stale else "native events ingested",
                   {"events": len(events), "correlations": len(correlations), "malformed": malformed,
-                   "remaining_bytes": remaining}),
+                   "remaining_bytes": remaining, "heartbeats": heartbeats,
+                   "heartbeat_age_seconds": round(heartbeat_age, 1)}),
             emitted,
             findings,
         )

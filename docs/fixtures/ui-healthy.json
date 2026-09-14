@@ -18,7 +18,9 @@
       {"name": "listeners", "status": "healthy", "message": "8 TCP listeners inspected", "details": {"count": 8}},
       {"name": "loaded_images", "status": "healthy", "message": "2,180 executable mappings inspected", "details": {"mappings": 2180}},
       {"name": "baseline", "status": "healthy", "message": "integrity baseline matches", "details": {"entries": 74}},
-      {"name": "native_events", "status": "healthy", "message": "native event stream current", "details": {"events": 0}}
+      {"name": "events", "status": "healthy", "message": "event changes correlated", "details": {"events": 0, "correlations": 0}},
+      {"name": "native_events", "status": "healthy", "message": "native event stream current", "details": {"events": 0, "heartbeats": 1, "heartbeat_age_seconds": 4.2}},
+      {"name": "bluepulse", "status": "healthy", "message": "available sensor coverage verified", "details": {"confidence": "high", "confidence_scope": "available sensors", "operational": 9, "monitored": 9, "coverage_gaps": [], "monitoring_mode": "continuous snapshots", "event_continuity": "healthy", "native_telemetry": "healthy", "native_dropped_events": 0, "integrity_baseline": "healthy", "artifacts_checked": 5, "artifact_issues": []}}
     ],
     "findings": [],
     "events": []

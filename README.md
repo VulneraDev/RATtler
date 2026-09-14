@@ -11,8 +11,8 @@ the computer unless you export a report yourself.
 
 Download **one ZIP**—not both:
 
-- [Mac with an Apple chip](https://github.com/VulneraDev/RATtler/releases/download/v0.8.1/RATtler-macOS-Apple-Silicon.zip)
-- [Mac with an Intel processor](https://github.com/VulneraDev/RATtler/releases/download/v0.8.1/RATtler-macOS-Intel.zip)
+- [Mac with an Apple chip](https://github.com/VulneraDev/RATtler/releases/download/v0.8.2/RATtler-macOS-Apple-Silicon.zip)
+- [Mac with an Intel processor](https://github.com/VulneraDev/RATtler/releases/download/v0.8.2/RATtler-macOS-Intel.zip)
 
 Not sure which Mac you have? Open **Apple menu → About This Mac**:
 
@@ -46,8 +46,23 @@ RATtler scans automatically when it opens. You can also click **Scan now**.
 - Only use **Review quarantine** after you recognize and verify the exact file.
 
 If RATtler says it is running from Downloads, close it, drag it into
-**Applications**, and reopen it there. Version 0.8.1 also excludes RATtler’s
-exact app and scan-engine process IDs so it does not flag itself.
+**Applications**, and reopen it there. RATtler excludes its exact app and
+scan-engine process IDs so it does not flag itself.
+
+## BluePulse
+
+BluePulse answers: **“Can I trust the sensors behind this result?”** It keeps
+detection confidence separate from threat severity. A scan can therefore show
+a real threat with high confidence, or no threat while warning that visibility
+is incomplete.
+
+It checks whether available protection and behavioral sensors replied, whether
+the report is fresh, whether event state is continuous, whether local monitoring
+files have safe permissions, and whether native telemetry reported a heartbeat
+or dropped events. Optional native telemetry and integrity baselines are clearly
+labeled when they are not configured; their absence is not presented as failure.
+
+![RATtler BluePulse detection confidence](docs/images/rattler-bluepulse.png)
 
 ## Screenshots
 
@@ -69,6 +84,7 @@ Risk detected:
 - TCP services exposed on every network interface
 - Deleted or untrusted Mach-O code loaded into protected processes
 - Code-signing and Team ID mismatches
+- BluePulse sensor confidence, scan freshness, state permissions, and event loss
 - Gatekeeper and XProtect health on macOS
 - Microsoft Defender health on Windows
 - ClamAV availability on Linux and other Unix systems
@@ -93,6 +109,8 @@ the file again and never overwrites an existing destination.
   `~/Library/Application Support/RATtler`.
 - RATtler never quarantines automatically.
 - The current Endpoint Security collector is detection-only.
+- BluePulse is tamper-evident within the app’s current permissions; it is not a
+  substitute for the planned signed system extension and root-owned state.
 
 ## Update or remove RATtler
 

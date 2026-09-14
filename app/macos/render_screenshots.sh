@@ -19,6 +19,9 @@ xcrun --sdk macosx clang \
     "$repository_root/docs/images/rattler-healthy.png"
 "$renderer" "$web_page" "$repository_root/docs/fixtures/ui-risk.json" \
     "$repository_root/docs/images/rattler-risk.png"
+"$renderer" "$web_page" "$repository_root/docs/fixtures/ui-healthy.json" \
+    "$repository_root/docs/images/rattler-bluepulse.png" bluepulse
 
 sips -z 760 1180 "$repository_root/docs/images/rattler-healthy.png" >/dev/null
 sips -z 760 1180 "$repository_root/docs/images/rattler-risk.png" >/dev/null
+sips -z 760 1180 "$repository_root/docs/images/rattler-bluepulse.png" >/dev/null

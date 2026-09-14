@@ -1,6 +1,7 @@
 import json
 import os
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -90,6 +91,37 @@ class NativeCursorTests(unittest.TestCase):
         self.assertEqual(check.details["malformed"], 1)
         self.assertEqual(events, [])
         self.assertEqual(findings, [])
+
+    def test_heartbeat_is_consumed_without_activity_noise(self):
+        with tempfile.TemporaryDirectory() as directory:
+            event_path = Path(directory) / "native.jsonl"
+            cursor_path = Path(directory) / "cursor.json"
+            event_path.write_bytes(b"")
+            ingest_native_events(event_path, cursor_path)
+            heartbeat = native_event("heartbeat", timestamp_ns=time.time_ns())
+            with event_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(heartbeat) + "\n")
+            check, events, findings = ingest_native_events(event_path, cursor_path)
+        self.assertEqual(check.status, Status.HEALTHY)
+        self.assertEqual(check.details["heartbeats"], 1)
+        self.assertEqual(events, [])
+        self.assertEqual(findings, [])
+
+    def test_stale_native_stream_degrades_coverage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            event_path = Path(directory) / "native.jsonl"
+            cursor_path = Path(directory) / "cursor.json"
+            event_path.write_bytes(b"")
+            stale = time.time() - 60
+            os.utime(str(event_path), (stale, stale))
+            check, _events, _findings = ingest_native_events(event_path, cursor_path)
+        self.assertEqual(check.status, Status.DEGRADED)
+        self.assertEqual(check.message, "native sensor heartbeat is stale")
+
+    def test_native_collector_emits_periodic_heartbeat(self):
+        source = (ROOT / "native/macos/Sources/rattler_es_sensor.c").read_text(encoding="utf-8")
+        self.assertIn("emit_heartbeat", source)
+        self.assertIn("15 * NSEC_PER_SEC", source)
 
 
 if __name__ == "__main__":

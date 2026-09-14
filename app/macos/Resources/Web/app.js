@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const state = { report: null, quarantine: [], capabilities: { baseline: false, nativeEvents: false, installed: true, appPath: "", version: "0.8.1" }, phase: "starting", autoTimer: null };
+  const state = { report: null, quarantine: [], capabilities: { baseline: false, nativeEvents: false, installed: true, appPath: "", version: "0.8.2" }, phase: "starting", autoTimer: null };
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const esc = value => String(value ?? "—").replace(/[&<>'"]/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[char]));
@@ -23,19 +23,28 @@
     return `<div class="check-row ${esc(status)}"><span class="check-dot">${status === "healthy" ? "✓" : status === "unhealthy" ? "×" : "!"}</span><div><strong>${esc(title(check.name))}</strong><small>${esc(check.message)}</small></div><em>${esc(statusLabel(status))}</em></div>`;
   };
   const findingRow = finding => `<div class="finding-row ${esc(finding.severity)}"><div class="finding-main"><strong>${esc(finding.title)}</strong><p>${esc(finding.message)}</p><span class="meta">${esc(finding.rule_id)} &nbsp;•&nbsp; ${esc(title(finding.category))}</span></div>${badge(finding.severity)}</div>`;
+  const pulseCheck = behavior => (behavior?.sensors || []).find(item => item.name === "bluepulse");
+  const scanFreshness = report => {
+    if (document.documentElement.classList.contains("snapshot")) return { fresh:true, age:0 };
+    const observed = Date.parse(report?.observed_at || "");
+    const age = Date.now() - observed;
+    return { fresh: Number.isFinite(age) && age >= 0 && age <= 150000, age };
+  };
+  const ageLabel = age => !Number.isFinite(age) ? "Unknown" : age < 60000 ? "Just now" : `${Math.floor(age / 60000)} min ago`;
 
   function renderDashboard() {
     if (!state.report) return;
     const report = state.report, behavior = report.behavior || {}, protection = report.protection || {};
     const findings = [...(behavior.findings || [])].sort((a,b) => severityRank(b.severity) - severityRank(a.severity));
-    const checks = [...(protection.checks || []), ...(behavior.sensors || [])];
-    const healthy = checks.filter(item => item.status === "healthy").length;
+    const checks = [...(protection.checks || []), ...(behavior.sensors || []).filter(item => item.name !== "bluepulse")];
+    const pulse = pulseCheck(behavior), pulseConfidence = pulse?.details?.confidence || "unknown";
+    const pulseKind = pulseConfidence === "high" ? "" : pulseConfidence === "reduced" ? "warning" : "danger";
     const high = findings.filter(item => ["critical","high"].includes(item.severity)).length;
     const heroCopy = {
       healthy:["No urgent indicators detected","Built-in protection and RATtler’s behavioral sensors completed without a high-risk finding."],
       degraded:["Some coverage needs attention","The endpoint is observable, but one or more findings or sensors need review."],
       unhealthy:["RATtler found activity to review","Open Findings for the evidence behind the highest-priority indicators. RATtler does not remove files automatically."],
-      unknown:["The scan could not verify everything","One or more sensors were unavailable. Review Sensor Health to restore visibility."]
+      unknown:["The scan could not verify everything","One or more sensors were unavailable. Open BluePulse to restore visibility."]
     }[report.status] || ["Scan completed","Review the available endpoint evidence."];
     const observed = report.observed_at ? new Date(report.observed_at).toLocaleString([], {dateStyle:"medium",timeStyle:"short"}) : "Just now";
     const priority = findings.slice(0,4).map(findingRow).join("") || `<div class="empty"><div><div class="empty-icon">✓</div><h3>No behavioral findings</h3><p>No current indicator crossed RATtler’s alert threshold.</p></div></div>`;
@@ -48,7 +57,7 @@
       <div class="metrics">
         ${metric(findings.length,"Findings",findings.length ? "Review recommended" : "No active indicators","alert",findings.length ? "warning" : "")}
         ${metric(high,"High priority","Critical and high","shield",high ? "danger" : "")}
-        ${metric(`${healthy}/${checks.length}`,"Coverage","Healthy sensors","coverage","info")}
+        ${metric(title(pulseConfidence),"BluePulse","Detection confidence","pulse",pulseKind)}
         ${metric((behavior.events || []).length,"Activity","Recent correlated events","clock","info")}
       </div>
       <div class="dashboard-grid"><article class="panel card-block"><div class="card-title"><div><h3>Priority findings</h3><p>Indicators that deserve attention first</p></div><span>${findings.length} total</span></div>${priority}</article><article class="panel card-block"><div class="card-title"><div><h3>Sensor coverage</h3><p>Latest health by layer</p></div></div>${coverage}${nativeNotice}</article></div>`;
@@ -84,16 +93,45 @@
     }
     return null;
   };
-  function renderSensors() {
-    if (!state.report) { $("#sensors-content").innerHTML = empty("⌁","No sensor report yet","Run a scan to verify each available coverage layer."); return; }
+  function renderBluePulse() {
+    if (!state.report) { $("#bluepulse-content").innerHTML = empty("⌁","No confidence report yet","Run a scan so BluePulse can verify each available layer."); return; }
     const protection = state.report.protection || {}, behavior = state.report.behavior || {};
-    const checks = [...(protection.checks || []), ...(behavior.sensors || [])], healthy = checks.filter(item=>item.status==="healthy").length, unknown = checks.filter(item=>item.status==="unknown").length;
-    $("#sensors-content").innerHTML = `<div class="sensor-summary">${metric(healthy,"Operational","Healthy checks","check","")}${metric(unknown,"Unavailable","Unknown coverage","alert","warning")}${metric(title(protection.provider),"Provider","Native protection","shield","info")}</div>${sensorGroup("Endpoint protection", protection.checks || [])}${sensorGroup("Behavioral sensors", behavior.sensors || [])}${nativeCard()}`;
+    const pulse = pulseCheck(behavior) || { status:"unknown", message:"BluePulse data unavailable", details:{} };
+    const details = pulse.details || {}, freshness = scanFreshness(state.report);
+    const installed = state.capabilities.installed !== false;
+    const decisiveStatus = ["unhealthy","unknown"].includes(pulse.status);
+    const effectiveStatus = decisiveStatus ? pulse.status : !freshness.fresh || !installed ? "degraded" : pulse.status;
+    const confidence = decisiveStatus ? details.confidence || "low" : !freshness.fresh || !installed ? "reduced" : details.confidence || "low";
+    const headline = {healthy:"Sensors are reporting normally",degraded:"Detection confidence needs attention",unknown:"Detection confidence is incomplete",unhealthy:"A defensive layer is unhealthy"}[effectiveStatus] || "Detection confidence is incomplete";
+    const explanation = effectiveStatus === "healthy" ? "BluePulse verified the available layers, event continuity, and local monitoring state behind this scan." : "Review the signals below before relying on a clean endpoint result.";
+    const eventState = details.event_continuity || "not configured";
+    const nativeState = details.native_telemetry || "not configured";
+    const dropped = Number(details.native_dropped_events || 0);
+    const artifactIssues = Array.isArray(details.artifact_issues) ? details.artifact_issues : [];
+    const signals = [
+      {name:"scan_freshness",status:freshness.fresh?"healthy":"degraded",message:freshness.fresh?"The current report is recent.":"The current report is older than 2½ minutes."},
+      {name:"app_placement",status:installed?"healthy":"degraded",message:installed?"RATtler is running from Applications.":"Move RATtler into Applications and reopen it."},
+      {name:"event_continuity",status:["healthy","not configured"].includes(eventState)?"healthy":eventState,message:eventState==="not configured"?"One-time snapshot mode; continuous event state is not enabled.":`Continuous event state is ${eventState}.`},
+      {name:"local_state_protection",status:artifactIssues.length?"degraded":"healthy",message:artifactIssues.length?`${artifactIssues.length} local monitoring artifact needs review.`:`${Number(details.artifacts_checked || 0)} local monitoring artifacts passed permission checks.`},
+      {name:"native_event_loss",status:nativeState==="not configured"?"healthy":dropped?"degraded":nativeState,message:nativeState==="not configured"?"Native telemetry is optional and not provisioned.":dropped?`${dropped} native events were dropped.`:"No native event loss was reported."}
+    ];
+    const behavioral = (behavior.sensors || []).filter(item => item.name !== "bluepulse");
+    $("#bluepulse-content").innerHTML = `
+      <article class="panel bluepulse-hero ${esc(effectiveStatus)}"><div class="pulse-orb"><span></span><i></i></div><div class="bluepulse-copy"><div class="status-kicker">${esc(confidence.toUpperCase())} CONFIDENCE</div><h2>${esc(headline)}</h2><p>${esc(explanation)}</p><small>Confidence describes visibility—not whether findings are safe or malicious.</small></div><div class="pulse-trace"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></article>
+      <div class="sensor-summary">${metric(ageLabel(freshness.age),"Last scan",freshness.fresh?"Current":"Refresh recommended","clock",freshness.fresh?"":"warning")}${metric(`${Number(details.operational || 0)}/${Number(details.monitored || 0)}`,"Operational","Available layers","check",pulse.status==="healthy"?"":"warning")}${metric(title(details.monitoring_mode || "snapshot"),"Mode","Local monitoring","coverage","info")}</div>
+      ${sensorGroup("Assurance signals", signals)}
+      ${sensorGroup("Endpoint protection", protection.checks || [])}
+      ${sensorGroup("Behavioral sensors", behavioral)}
+      ${nativeCard()}`;
   }
-  const sensorGroup = (heading,checks) => `<div class="sensor-group"><h3>${esc(heading)}</h3><div class="sensor-grid">${checks.map(check => `<article class="panel sensor-card">${checkRow(check)}<p>${esc(check.message)}</p>${evidence(check.details)}</article>`).join("")}</div></div>`;
+  const sensorGroup = (heading,checks) => `<div class="sensor-group"><h3>${esc(heading)}</h3><div class="sensor-grid">${checks.map(check => `<article class="panel sensor-card">${checkRow(check)}</article>`).join("")}</div></div>`;
   const nativeCard = () => {
-    const connected = state.capabilities.nativeEvents;
-    return `<article class="panel native-card ${connected ? "connected" : ""}"><span class="native-symbol">${connected ? "◇" : "▣"}</span><div><h3>Endpoint Security telemetry <span class="native-state">${connected ? "CONNECTED" : "ENTITLEMENT PENDING"}</span></h3><p>${connected ? "RATtler is ingesting native memory, task-port, remote-thread, tracing, and signature events." : "The collector is built, but Apple must approve its restricted entitlement before public live telemetry can connect."}</p></div><a href="https://developer.apple.com/documentation/endpointsecurity">Apple documentation ↗</a></article>`;
+    const configured = state.capabilities.nativeEvents;
+    const sensor = state.report?.behavior?.sensors?.find(item => item.name === "native_events");
+    const connected = configured && sensor?.status === "healthy";
+    const label = connected ? "CONNECTED" : configured ? "NEEDS ATTENTION" : "ENTITLEMENT PENDING";
+    const copy = connected ? "RATtler is receiving a live collector heartbeat and Endpoint Security events." : configured ? "The native event stream exists, but its heartbeat or event continuity needs review in BluePulse." : "The collector is built, but Apple must approve its restricted entitlement before public live telemetry can connect.";
+    return `<article class="panel native-card ${connected ? "connected" : ""}"><span class="native-symbol">${connected ? "◇" : "▣"}</span><div><h3>Endpoint Security telemetry <span class="native-state">${label}</span></h3><p>${copy}</p></div><a href="https://developer.apple.com/documentation/endpointsecurity">Apple documentation ↗</a></article>`;
   };
   function renderActivity() {
     const events = state.report?.behavior?.events || [];
@@ -119,7 +157,7 @@
     $("#sidebar-label").textContent = state.report ? statusLabel(status) : "Awaiting scan";
     $("#export-button").disabled = !state.report;
   }
-  function renderAll() { renderDashboard(); renderFindings(); renderSensors(); renderActivity(); renderSettings(); renderChrome(); }
+  function renderAll() { renderDashboard(); renderFindings(); renderBluePulse(); renderActivity(); renderSettings(); renderChrome(); }
   function showToast(message, success = false) { const toast=$("#toast"); $("strong",toast).textContent=success ? "Response completed" : "RATtler needs attention"; $("p",toast).textContent=message; toast.classList.toggle("success",success); toast.classList.add("visible"); clearTimeout(showToast.timer); showToast.timer=setTimeout(()=>toast.classList.remove("visible"),7000); }
 
   window.RATtler = {
@@ -134,5 +172,6 @@
   $("#baseline-button").addEventListener("click",()=>{ if(confirm(`${state.capabilities.baseline ? "Replace" : "Create"} the integrity baseline?\n\nOnly continue after reviewing the current scan and trusting this Mac’s present state.`)) native("baseline"); });
   $("#severity-filter").addEventListener("change",renderFindings); $("#finding-search").addEventListener("input",renderFindings); $("#toast button").addEventListener("click",()=>$("#toast").classList.remove("visible"));
   const auto=$("#auto-scan"); auto.checked=localStorage.getItem("rattler-auto-scan")==="true"; const configureAuto=()=>{ clearInterval(state.autoTimer); state.autoTimer=null; if(auto.checked) state.autoTimer=setInterval(()=>native("scan"),60000); localStorage.setItem("rattler-auto-scan",auto.checked); }; auto.addEventListener("change",configureAuto); configureAuto();
+  setInterval(()=>{ if ($("#bluepulse").classList.contains("active")) renderBluePulse(); },30000);
   native("capabilities");
 })();

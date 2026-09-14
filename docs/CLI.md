@@ -22,6 +22,21 @@ PYTHONPATH=src python3 -m rattler --pretty
 One-shot exit codes are `0` healthy, `1` degraded, `2` unknown, and `3`
 unhealthy. `Ctrl-C` returns `130` in watch mode.
 
+## BluePulse confidence
+
+Every scan includes a `bluepulse` sensor result. It reports high, reduced, or
+low confidence in the sensors available to that scan. Threat findings and
+confidence remain separate: high confidence does not mean the endpoint is clean.
+
+With `--state`, `--journal`, `--baseline`, or `--native-events`, BluePulse also
+checks the corresponding local artifacts. Private state must remain owned by the
+current user and inaccessible to group or other users. A native event stream may
+be readable by a dedicated group, but it must not be group- or world-writable.
+
+Native collection is considered stale after 45 seconds without a heartbeat or
+event. The collector emits a heartbeat every 15 seconds. Heartbeats are consumed
+as health evidence and do not appear in the activity timeline.
+
 ## Integrity baseline
 
 Create a baseline only after reviewing a clean scan:

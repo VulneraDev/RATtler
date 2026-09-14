@@ -5,6 +5,10 @@ interface. It runs the open-source RATtler engine as a child process, renders
 its structured report, and offers explicit local quarantine for eligible
 file-backed findings without uploading endpoint data.
 
+The BluePulse view separates detection confidence from threat status. It shows
+scan freshness, responding layers, event continuity, monitoring-file permission
+health, native collector heartbeat state, and dropped-event evidence.
+
 ## Install the app
 
 Download one ZIP from the main [README](../../README.md), open it, then drag

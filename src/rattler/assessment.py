@@ -1,4 +1,6 @@
-from .model import Assessment, BehaviorReport, Severity, Status
+from typing import Optional
+
+from .model import Assessment, BehaviorReport, Report, Severity, Status
 from .providers import Provider
 
 
@@ -11,8 +13,12 @@ SEVERITY_RANK = {
 }
 
 
-def build_assessment(provider: Provider, behavior: BehaviorReport) -> Assessment:
-    protection = provider.report()
+def build_assessment(
+    provider: Provider,
+    behavior: BehaviorReport,
+    protection: Optional[Report] = None,
+) -> Assessment:
+    protection = protection or provider.report()
     highest = max(
         [SEVERITY_RANK[item.severity] for item in behavior.findings]
         + [SEVERITY_RANK[item.severity] for item in behavior.events],

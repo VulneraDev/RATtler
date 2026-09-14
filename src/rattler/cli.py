@@ -8,6 +8,7 @@ from typing import Optional, Sequence
 from .assessment import build_assessment
 from .baseline import check_baseline, create_baseline
 from .behavior import scan_behavior
+from .bluepulse import evaluate_bluepulse
 from .events import update_events
 from .model import Assessment, BehaviorReport, Status
 from .native_bridge import ingest_native_events
@@ -116,7 +117,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     findings=behavior.findings + native_findings,
                     events=behavior.events + native_events,
                 )
-            report = build_assessment(provider, behavior)
+            protection = provider.report()
+            bluepulse = evaluate_bluepulse(
+                protection.checks,
+                behavior.sensors,
+                behavior.findings,
+                state_path=Path(args.state) if args.state else None,
+                journal_path=Path(args.journal) if args.journal else None,
+                baseline_path=Path(args.baseline) if args.baseline else None,
+                native_event_path=Path(args.native_events) if args.native_events else None,
+            )
+            behavior = BehaviorReport(
+                sensors=behavior.sensors + [bluepulse],
+                findings=behavior.findings,
+                events=behavior.events,
+            )
+            report = build_assessment(provider, behavior, protection)
             fingerprint = json.dumps(
                 {
                     "status": report.status,
