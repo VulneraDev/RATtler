@@ -14,8 +14,8 @@ class MacOSAppSourceTests(unittest.TestCase):
         with (APP / "Info.plist").open("rb") as handle:
             info = plistlib.load(handle)
         self.assertEqual(info["CFBundleIdentifier"], "dev.vulnera.rattler")
-        self.assertEqual(info["CFBundleShortVersionString"], "0.13.0")
-        self.assertEqual(info["CFBundleVersion"], "15")
+        self.assertEqual(info["CFBundleShortVersionString"], "0.13.1")
+        self.assertEqual(info["CFBundleVersion"], "16")
         self.assertEqual(info["LSMinimumSystemVersion"], "13.0")
         self.assertTrue(info["LSMultipleInstancesProhibited"])
 
@@ -102,8 +102,8 @@ class MacOSAppSourceTests(unittest.TestCase):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         build = (APP / "build.sh").read_text(encoding="utf-8")
         self.assertIn("Download **one ZIP**", readme)
-        self.assertIn("releases/download/v0.13.0/RATtler-macOS-Apple-Silicon.zip", readme)
-        self.assertIn("releases/download/v0.13.0/RATtler-macOS-Intel.zip", readme)
+        self.assertIn("releases/download/v0.13.1/RATtler-macOS-Apple-Silicon.zip", readme)
+        self.assertIn("releases/download/v0.13.1/RATtler-macOS-Intel.zip", readme)
         self.assertIn("System Settings → Privacy & Security", readme)
         self.assertIn("Open Anyway", readme)
         self.assertIn('release_architecture="Apple-Silicon"', build)

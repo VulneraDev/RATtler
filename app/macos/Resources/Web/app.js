@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const state = { report: null, fileScan: null, quarantine: [], exceptions: [], capabilities: { baseline: false, nativeEvents: false, yaraRules: false, recovery: false, recoveryFrozen: false, recoveryError: false, installed: true, appPath: "", version: "0.13.0" }, phase: "starting", autoTimer: null };
+  const state = { report: null, fileScan: null, quarantine: [], exceptions: [], capabilities: { baseline: false, nativeEvents: false, yaraRules: false, recovery: false, recoveryFrozen: false, recoveryError: false, installed: true, appPath: "", version: "0.13.1" }, phase: "starting", autoTimer: null };
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const esc = value => String(value ?? "—").replace(/[&<>'"]/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[char]));

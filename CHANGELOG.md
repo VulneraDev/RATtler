@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.13.1
+
+- Normalize reviewed-exception paths with the endpoint's native path rules so
+  Deep Scan hash exceptions work consistently on Windows as well as Unix hosts
+
 ## 0.13.0
 
 - Add a native Deep Scan tab with a file-and-folder picker and clear local-only
