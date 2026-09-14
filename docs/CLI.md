@@ -22,6 +22,19 @@ PYTHONPATH=src python3 -m rattler --pretty
 One-shot exit codes are `0` healthy, `1` degraded, `2` unknown, and `3`
 unhealthy. `Ctrl-C` returns `130` in watch mode.
 
+## Persistence Atlas
+
+Every normal macOS scan includes a `persistence_atlas` sensor. Its `sources`
+array reports health, limits, object counts, and a bounded preview for eleven
+autostart and configuration sources. Findings use `RAT-PERSIST-101` through
+`RAT-PERSIST-109` for precise ownership, permission, symlink, preload,
+staging-path, signing, and update-channel signals.
+
+Current-user cron jobs are inspected through a fixed `crontab -l` argument list,
+but command text is never returned; only line number and risk booleans are kept.
+TCC grant rows are not read. Full source and field details are in the
+[Persistence Atlas guide](PERSISTENCE_ATLAS.md).
+
 ## Detection Lab
 
 Replay the bundled safe fixtures through the production correlation engine:
@@ -153,9 +166,11 @@ rattler --baseline ~/.rattler/baseline.json --watch --changes-only
 
 The baseline tracks SHA-256 content, size, permissions, ownership, and symlink
 targets. For active Mach-O code in user-writable locations it also records the
-signing CDHash when available. It is mode `0600`. Same-user malware could
-replace a local baseline, so keep a protected copy when higher assurance is
-required.
+signing CDHash when available. Eligible Persistence Atlas file sources are
+included by default. If one Atlas source becomes unreadable, only that source's
+comparison degrades; it does not emit false missing-file findings. The baseline
+is mode `0600`. Same-user malware could replace it, so keep a protected copy
+when higher assurance is required.
 
 ## Event correlation
 

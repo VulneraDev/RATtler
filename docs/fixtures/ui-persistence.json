@@ -1,0 +1,47 @@
+{
+  "status": "healthy",
+  "observed_at": "2026-09-14T13:32:10Z",
+  "protection": {
+    "provider": "macos-built-in",
+    "hostname": "Studio-Mac",
+    "platform": "macOS",
+    "status": "healthy",
+    "checks": [
+      {"name": "gatekeeper", "status": "healthy", "message": "enabled", "details": {}},
+      {"name": "xprotect", "status": "healthy", "message": "installed and current", "details": {"version": "5290"}}
+    ]
+  },
+  "behavior": {
+    "sensors": [
+      {
+        "name": "persistence_atlas",
+        "status": "healthy",
+        "message": "persistence sources inventoried",
+        "details": {
+          "sources_checked": 11,
+          "sources_healthy": 11,
+          "sources_degraded": [],
+          "items": 47,
+          "baseline_assets": 41,
+          "limits": {"items_per_source": 512, "total_items": 2500, "returned_items_per_source": 24, "file_bytes": 1048576, "command_bytes": 2097152, "depth": 6, "visited_paths_per_source": 50000, "children_per_directory": 16384},
+          "sources": [
+            {"id": "background_tasks", "label": "Background task management", "status": "healthy", "message": "source inventory collected", "count": 1, "limited": false, "errors": [], "items": [{"source": "background_tasks", "kind": "file", "path": "~/Library/Application Support/com.apple.backgroundtaskmanagementagent/backgrounditems.btm", "mode": "0600", "symbolic_link": false}]},
+            {"id": "shell_startup", "label": "Shell startup files", "status": "healthy", "message": "source inventory collected", "count": 1, "limited": false, "errors": [], "items": [{"source": "shell_startup", "kind": "file", "path": "~/.zprofile", "mode": "0644", "symbolic_link": false}]},
+            {"id": "cron", "label": "Cron jobs", "status": "healthy", "message": "source inventory collected", "count": 0, "limited": false, "errors": [], "items": []},
+            {"id": "periodic", "label": "Periodic jobs", "status": "healthy", "message": "source inventory collected", "count": 3, "limited": false, "errors": [], "items": [{"source": "periodic", "kind": "file", "path": "/etc/periodic/daily/110.clean-tmps", "mode": "0755", "symbolic_link": false}]},
+            {"id": "authorization_plugins", "label": "Authorization plug-ins", "status": "healthy", "message": "source inventory collected", "count": 0, "limited": false, "errors": [], "items": []},
+            {"id": "browser_extensions", "label": "Browser extensions", "status": "healthy", "message": "source inventory collected", "count": 37, "limited": false, "errors": [], "items": [{"source": "browser_extensions", "kind": "file", "path": "~/Library/Application Support/Browser/Default/Extensions/example/1.0/manifest.json", "name": "Content Filter", "version": "1.0", "permission_count": 2, "mode": "0644", "symbolic_link": false}, {"source": "browser_extensions", "kind": "file", "path": "~/Library/Application Support/Browser/Profile 1/Extensions/example/2.4/manifest.json", "name": "Password Helper", "version": "2.4", "permission_count": 3, "mode": "0644", "symbolic_link": false}]},
+            {"id": "developer_extensions", "label": "Developer-tool extensions", "status": "healthy", "message": "source inventory collected", "count": 0, "limited": false, "errors": [], "items": []},
+            {"id": "privacy_controls", "label": "Privacy-control state", "status": "healthy", "message": "source inventory collected", "count": 1, "limited": false, "errors": [], "items": [{"source": "privacy_controls", "kind": "file", "path": "~/Library/Application Support/com.apple.TCC/TCC.db", "mode": "0600", "symbolic_link": false}]},
+            {"id": "login_items", "label": "Login items", "status": "healthy", "message": "login items inventoried", "count": 1, "limited": false, "errors": [], "items": [{"source": "login_items", "kind": "login_item", "name": "Password Manager", "path": "/Applications/Password Manager.app", "status": "enabled", "signature": "signed", "signature_valid": true, "team_id": "EXAMPLE123", "identifier": "com.example.password-manager", "cdhash": "0123456789abcdef0123456789abcdef01234567", "gatekeeper_assessment": "accepted", "notarized": true}]},
+            {"id": "configuration_profiles", "label": "Configuration profiles", "status": "healthy", "message": "profile enrollment state collected", "count": 1, "limited": false, "errors": [], "items": [{"source": "configuration_profiles", "kind": "enrollment_state", "state": "MDM enrollment: No"}]},
+            {"id": "security_controls", "label": "Security-control state", "status": "healthy", "message": "security-control state collected", "count": 3, "limited": false, "errors": [], "items": [{"source": "security_controls", "kind": "system_integrity_protection", "state": "enabled"}, {"source": "security_controls", "kind": "application_firewall", "state": "enabled"}, {"source": "security_controls", "kind": "filevault", "state": "on"}]}
+          ]
+        }
+      },
+      {"name": "bluepulse", "status": "healthy", "message": "available sensor coverage verified", "details": {"confidence": "high", "operational": 3, "monitored": 3, "coverage_gaps": [], "monitoring_mode": "continuous snapshots"}}
+    ],
+    "findings": [],
+    "events": []
+  }
+}

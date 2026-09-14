@@ -11,8 +11,8 @@ the computer unless you export a report yourself.
 
 Download **one ZIP**—not both:
 
-- [Mac with an Apple chip](https://github.com/VulneraDev/RATtler/releases/download/v0.14.0/RATtler-macOS-Apple-Silicon.zip)
-- [Mac with an Intel processor](https://github.com/VulneraDev/RATtler/releases/download/v0.14.0/RATtler-macOS-Intel.zip)
+- [Mac with an Apple chip](https://github.com/VulneraDev/RATtler/releases/download/v0.15.0/RATtler-macOS-Apple-Silicon.zip)
+- [Mac with an Intel processor](https://github.com/VulneraDev/RATtler/releases/download/v0.15.0/RATtler-macOS-Intel.zip)
 
 Not sure which Mac you have? Open **Apple menu → About This Mac**:
 
@@ -86,6 +86,26 @@ Contributors can run the same suite in the app, CLI, and CI. See the
 [Detection Lab guide](docs/DETECTION_LAB.md) to add a safe positive and negative
 fixture—never live malware or executable payload content.
 
+## Persistence Atlas
+
+Open **Persistence** to map eleven independent macOS autostart and configuration
+sources: login items, background task management, shell startup, cron, periodic
+jobs, authorization plug-ins, browser and developer-tool extensions,
+configuration profiles, privacy-control state, and security controls.
+
+RATtler reports each source's health separately, so one denied permission does
+not make the rest of the endpoint look clean or unavailable. It alerts on
+specific evidence such as unsafe ownership or permissions, symlinks, preload
+directives, temporary launch paths, invalid signing, and insecure extension
+updates. Installed profiles and ordinary extension permissions remain context,
+not automatic malware labels. Eligible source files also join the integrity
+baseline without creating false missing-file alerts when a source is unavailable.
+
+![RATtler Persistence Atlas source coverage](docs/images/rattler-persistence.png)
+
+The [Persistence Atlas guide](docs/PERSISTENCE_ATLAS.md) documents every source,
+rule, privacy boundary, and safety limit.
+
 ## BluePulse
 
 BluePulse answers: **“Can I trust the sensors behind this result?”** It keeps
@@ -145,6 +165,10 @@ Risk detected:
 - Processes launched from temporary, download, cache, or deleted locations
 - Suspicious LaunchAgents and LaunchDaemons
 - `DYLD_INSERT_LIBRARIES` and `LD_PRELOAD` persistence
+- Login items, background task management, shell and cron startup, periodic
+  jobs, privileged authorization plug-ins, and browser/developer extensions
+- Persistence ownership, permissions, signing, Gatekeeper/notarization context,
+  staging paths, and independently degradable source coverage
 - TCP services exposed on every network interface
 - Deleted or untrusted Mach-O code loaded into protected processes
 - Code-signing, Team ID, and CDHash identity changes
@@ -195,7 +219,8 @@ of the future signed system-extension milestone.
 - Reports and response history stay in
   `~/Library/Application Support/RATtler`.
 - Local reports may contain executable paths, signing identifiers, Team IDs,
-  and CDHashes so a finding can be investigated without guessing code identity.
+  CDHashes, extension names, and security-control state so a finding can be
+  investigated without guessing code identity.
 - RATtler never quarantines automatically.
 - The current Endpoint Security collector is detection-only.
 - Deep Scan reads the contents of only the file or folder an operator selects;
@@ -206,6 +231,8 @@ of the future signed system-extension milestone.
   opt-in and stores them locally under Application Support.
 - BluePulse is tamper-evident within the app’s current permissions; it is not a
   substitute for the planned signed system extension and root-owned state.
+- Persistence Atlas never returns current-user crontab commands or TCC grant
+  rows; its other bounded local metadata may appear in an exported report.
 
 ## Update or remove RATtler
 
@@ -218,8 +245,8 @@ only if you also want to remove reports, baselines, and quarantined files.
 
 ## Developers
 
-Python, CLI, Deep Scan, baseline, event-correlation, quarantine, recovery, and
-safe-canary commands are in the [CLI guide](docs/CLI.md). Build and packaging
+Python, CLI, Persistence Atlas, Deep Scan, baseline, event-correlation,
+quarantine, recovery, and safe-canary commands are in the [CLI guide](docs/CLI.md). Build and packaging
 instructions are in the [macOS app guide](app/macos/README.md). Native sensor
 provisioning is in the [Endpoint Security guide](native/macos/README.md).
 

@@ -14,8 +14,8 @@ class MacOSAppSourceTests(unittest.TestCase):
         with (APP / "Info.plist").open("rb") as handle:
             info = plistlib.load(handle)
         self.assertEqual(info["CFBundleIdentifier"], "dev.vulnera.rattler")
-        self.assertEqual(info["CFBundleShortVersionString"], "0.14.0")
-        self.assertEqual(info["CFBundleVersion"], "18")
+        self.assertEqual(info["CFBundleShortVersionString"], "0.15.0")
+        self.assertEqual(info["CFBundleVersion"], "19")
         self.assertEqual(info["LSMinimumSystemVersion"], "13.0")
         self.assertTrue(info["LSMultipleInstancesProhibited"])
 
@@ -23,7 +23,7 @@ class MacOSAppSourceTests(unittest.TestCase):
         html = (APP / "Resources/Web/index.html").read_text(encoding="utf-8")
         script = (APP / "Resources/Web/app.js").read_text(encoding="utf-8")
         self.assertIn("connect-src 'none'", html)
-        for view in ("dashboard", "findings", "deep-scan", "detection-lab", "ransomware", "bluepulse", "activity", "settings"):
+        for view in ("dashboard", "findings", "deep-scan", "persistence", "detection-lab", "ransomware", "bluepulse", "activity", "settings"):
             self.assertIn('id="%s"' % view, html)
         for handler in ("receiveReport", "receiveFileScan", "receiveDetectionLab", "receiveCapabilities", "receiveState", "receiveResponse"):
             self.assertIn(handler, script)
@@ -99,6 +99,15 @@ class MacOSAppSourceTests(unittest.TestCase):
         self.assertIn("Same detection logic", script)
         self.assertIn("not a verdict", script)
 
+    def test_persistence_atlas_separates_coverage_inventory_and_alerts(self):
+        script = (APP / "Resources/Web/app.js").read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn('item.name === "persistence_atlas"', script)
+        self.assertIn("Source coverage", script)
+        self.assertIn("Observed objects", script)
+        self.assertIn("Installed profiles, extensions, and autostart entries are inventory context", script)
+        self.assertIn("docs/PERSISTENCE_ATLAS.md", readme)
+
     def test_recovery_requires_native_consent_and_uses_a_new_destination(self):
         host = (APP / "Sources/main.m").read_text(encoding="utf-8")
         self.assertIn('alert.messageText = @"Enable the Recovery Vault?"', host)
@@ -112,8 +121,8 @@ class MacOSAppSourceTests(unittest.TestCase):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         build = (APP / "build.sh").read_text(encoding="utf-8")
         self.assertIn("Download **one ZIP**", readme)
-        self.assertIn("releases/download/v0.14.0/RATtler-macOS-Apple-Silicon.zip", readme)
-        self.assertIn("releases/download/v0.14.0/RATtler-macOS-Intel.zip", readme)
+        self.assertIn("releases/download/v0.15.0/RATtler-macOS-Apple-Silicon.zip", readme)
+        self.assertIn("releases/download/v0.15.0/RATtler-macOS-Intel.zip", readme)
         self.assertIn("System Settings → Privacy & Security", readme)
         self.assertIn("Open Anyway", readme)
         self.assertIn('release_architecture="Apple-Silicon"', build)
@@ -130,6 +139,7 @@ class MacOSAppSourceTests(unittest.TestCase):
         fixtures = {
             "healthy": "healthy", "risk": "risk", "bluepulse": "healthy",
             "ransomware": "healthy", "deep-scan": "file-scan", "detection-lab": "lab",
+            "persistence": "persistence",
         }
         for state, fixture in fixtures.items():
             relative = "docs/images/rattler-%s.png" % state

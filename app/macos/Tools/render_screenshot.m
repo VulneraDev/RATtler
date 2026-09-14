@@ -54,7 +54,7 @@
         @"recoveryFrozen": @([self.viewID isEqualToString:@"ransomware"]),
         @"recoveryError": @NO,
         @"installed": @YES,
-        @"version": @"0.14.0",
+        @"version": @"0.15.0",
     } options:0 error:nil];
     NSData *ready = [NSJSONSerialization dataWithJSONObject:@{
         @"phase": @"ready",
@@ -78,6 +78,8 @@
         self.viewID,
         [self.viewID isEqualToString:@"ransomware"]
             ? @"document.querySelector('#ransomware-content').style.zoom='0.78';"
+            : [self.viewID isEqualToString:@"persistence"]
+            ? @"document.querySelector('#persistence-content').style.zoom='0.82';"
             : @""];
     [self.webView evaluateJavaScript:script completionHandler:^(id value, NSError *error) {
         (void)value;
@@ -90,6 +92,7 @@
         if ([self.viewID isEqualToString:@"ransomware"]) contentSelector = @"#ransomware-content";
         if ([self.viewID isEqualToString:@"deep-scan"]) contentSelector = @"#file-scan-content";
         if ([self.viewID isEqualToString:@"detection-lab"]) contentSelector = @"#detection-lab-content";
+        if ([self.viewID isEqualToString:@"persistence"]) contentSelector = @"#persistence-content";
         NSString *diagnostic = [NSString stringWithFormat:
             @"JSON.stringify({children:document.querySelector('%@').childElementCount,toast:document.querySelector('#toast p').textContent,opacity:getComputedStyle(document.querySelector('#%@')).opacity})",
             contentSelector, self.viewID];
@@ -147,14 +150,14 @@ static RATSnapshotter *g_snapshotter;
 int main(int argc, const char *argv[]) {
     @autoreleasepool {
         if (argc != 4 && argc != 5) {
-            fprintf(stderr, "usage: render-screenshot PAGE REPORT OUTPUT [dashboard|bluepulse|ransomware|deep-scan|detection-lab]\n");
+            fprintf(stderr, "usage: render-screenshot PAGE REPORT OUTPUT [dashboard|bluepulse|ransomware|deep-scan|detection-lab|persistence]\n");
             return 2;
         }
         NSURL *page = [NSURL fileURLWithPath:@(argv[1])];
         NSData *report = [NSData dataWithContentsOfFile:@(argv[2])];
         NSURL *output = [NSURL fileURLWithPath:@(argv[3])];
         NSString *view = argc == 5 ? @(argv[4]) : @"dashboard";
-        if (![@[@"dashboard", @"bluepulse", @"ransomware", @"deep-scan", @"detection-lab"] containsObject:view]) {
+        if (![@[@"dashboard", @"bluepulse", @"ransomware", @"deep-scan", @"detection-lab", @"persistence"] containsObject:view]) {
             fprintf(stderr, "unsupported screenshot view\n");
             return 2;
         }

@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.15.0
+
+- Add Persistence Atlas with independently reported coverage for login items,
+  background task management, shell startup, cron, periodic jobs,
+  authorization plug-ins, browser/developer extensions, profiles, privacy
+  controls, and security controls
+- Detect unsafe persistence ownership and permissions, symbolic links, preload
+  directives, staging paths, insecure extension updates, and invalid signing
+- Add bounded signing, Team ID, CDHash, Gatekeeper, and notarization context for
+  privileged plug-ins and login-item apps without treating notarization as a
+  runtime-safety verdict
+- Keep current-user crontab commands and TCC grant rows out of reports while
+  retaining privacy-safe coverage and risk summaries
+- Extend integrity baselines to eligible Atlas assets and suppress false
+  missing-file alerts when only one source becomes unavailable
+- Add a polished Persistence view, reproducible synthetic screenshot, complete
+  source/privacy reference, and cross-platform tests
+
 ## 0.14.0
 
 - Add ReplayForge to replay strictly bounded, metadata-only endpoint fixtures

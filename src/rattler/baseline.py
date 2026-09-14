@@ -10,7 +10,7 @@ import tempfile
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from .behavior import suspicious_location
 from .injection import (
@@ -106,11 +106,34 @@ def discover_assets(
     home: Optional[str] = None,
     launchd_roots: Optional[Sequence[Path]] = None,
     include_loaded_code: bool = True,
+    include_persistence_atlas: bool = True,
+    atlas_roots: Optional[Dict[str, Sequence[Path]]] = None,
 ) -> List[Asset]:
+    assets, _unavailable = _discover_assets_with_coverage(
+        home, launchd_roots, include_loaded_code, include_persistence_atlas, atlas_roots,
+    )
+    return assets
+
+
+def _discover_assets_with_coverage(
+    home: Optional[str] = None,
+    launchd_roots: Optional[Sequence[Path]] = None,
+    include_loaded_code: bool = True,
+    include_persistence_atlas: bool = True,
+    atlas_roots: Optional[Dict[str, Sequence[Path]]] = None,
+) -> Tuple[List[Asset], Set[str]]:
     assets = _launchd_assets(home, launchd_roots)
     if include_loaded_code:
         assets.extend(_loaded_code_assets(home))
-    return sorted(set(assets), key=lambda item: (item.kind, item.path))
+    unavailable: Set[str] = set()
+    # Explicit launchd roots are a deliberately narrow/custom discovery scope.
+    # Atlas remains opt-in for that mode unless matching roots are also supplied.
+    if include_persistence_atlas and (launchd_roots is None or atlas_roots is not None):
+        from .persistence_atlas import discover_atlas_assets
+
+        atlas, unavailable = discover_atlas_assets(Path(home) if home else None, atlas_roots)
+        assets.extend(Asset(path, kind) for path, kind in atlas)
+    return sorted(set(assets), key=lambda item: (item.kind, item.path)), unavailable
 
 
 def fingerprint(asset: Asset) -> Optional[Fingerprint]:
@@ -196,8 +219,12 @@ def create_baseline(
     home: Optional[str] = None,
     launchd_roots: Optional[Sequence[Path]] = None,
     include_loaded_code: bool = True,
+    include_persistence_atlas: bool = True,
+    atlas_roots: Optional[Dict[str, Sequence[Path]]] = None,
 ) -> Dict[str, object]:
-    entries, skipped = capture(discover_assets(home, launchd_roots, include_loaded_code))
+    entries, skipped = capture(discover_assets(
+        home, launchd_roots, include_loaded_code, include_persistence_atlas, atlas_roots,
+    ))
     return write_baseline(path, entries, skipped)
 
 
@@ -227,7 +254,7 @@ def compare_entries(expected: List[Fingerprint], current: List[Fingerprint]) -> 
     for key, old in expected_by_key.items():
         new = current_by_key.get(key)
         if new is None:
-            severity = Severity.HIGH if old.kind in ("launchd_plist", "startup_executable") else Severity.MEDIUM
+            severity = Severity.HIGH if old.kind in ("launchd_plist", "startup_executable") or old.kind.startswith("atlas_") else Severity.MEDIUM
             findings.append(Finding(
                 "RAT-BASE-001", "Baselined asset is missing", severity, "integrity",
                 "A file recorded in the integrity baseline is no longer present.",
@@ -254,7 +281,7 @@ def compare_entries(expected: List[Fingerprint], current: List[Fingerprint]) -> 
     for key, new in current_by_key.items():
         if key in expected_by_key:
             continue
-        severity = Severity.HIGH if new.kind in ("launchd_plist", "startup_executable") else Severity.LOW
+        severity = Severity.HIGH if new.kind in ("launchd_plist", "startup_executable") or new.kind.startswith("atlas_") else Severity.LOW
         findings.append(Finding(
             "RAT-BASE-003", "New asset appeared after baseline", severity, "integrity",
             "A persistence entry or loaded code image was not present in the known-good baseline.",
@@ -268,12 +295,18 @@ def check_baseline(
     home: Optional[str] = None,
     launchd_roots: Optional[Sequence[Path]] = None,
     include_loaded_code: bool = True,
+    include_persistence_atlas: bool = True,
+    atlas_roots: Optional[Dict[str, Sequence[Path]]] = None,
 ) -> Tuple[Check, List[Finding]]:
     try:
         expected = _load(path)
     except (OSError, ValueError, TypeError, json.JSONDecodeError) as error:
         return Check("baseline", Status.UNKNOWN, "integrity baseline unavailable", {"error": str(error)}), []
-    current_assets = discover_assets(home, launchd_roots, include_loaded_code)
+    current_assets, unavailable = _discover_assets_with_coverage(
+        home, launchd_roots, include_loaded_code, include_persistence_atlas, atlas_roots,
+    )
+    expected = [entry for entry in expected if entry.kind not in unavailable]
+    current_assets = [asset for asset in current_assets if asset.kind not in unavailable]
     current_keys = {(asset.kind, asset.path) for asset in current_assets}
     # A module can be unloaded between baseline creation and checking while its
     # file remains intact. Recheck every expected path directly, then add newly
@@ -285,7 +318,10 @@ def check_baseline(
             current_keys.add(key)
     current, skipped = capture(current_assets)
     findings = compare_entries(expected, current)
+    status = Status.DEGRADED if unavailable else Status.HEALTHY
     return Check(
-        "baseline", Status.HEALTHY, "integrity baseline checked",
-        {"expected": len(expected), "current": len(current), "skipped": skipped},
+        "baseline", status,
+        "integrity baseline coverage is partial" if unavailable else "integrity baseline checked",
+        {"expected": len(expected), "current": len(current), "skipped": skipped,
+         "unavailable_kinds": sorted(unavailable)},
     ), findings

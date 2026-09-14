@@ -169,17 +169,23 @@ replayable, and measurable by any contributor without installing malware.
 
 ## 0.15 — Persistence and system audit breadth
 
-Status: planned.
+Status: implemented.
 
 - Expand persistence coverage to login items, background task management,
   authorization plug-ins, configuration profiles, shell startup files, cron,
   periodic jobs, browser extensions, and developer-tool extensions.
-- Track privacy-sensitive grants and security-control drift as configuration
-  evidence, not automatic malware findings.
+- Track privacy-control database metadata and security-control state as
+  configuration evidence, not automatic malware findings; TCC grant rows are
+  intentionally not collected.
 - Add signed-binary, notarization, ownership, and permission context while
   preserving behavioral evidence as the primary signal.
 - Baseline each source independently so unavailable permissions degrade only the
   affected coverage.
+
+All collectors have explicit object, depth, byte, and returned-evidence limits.
+Current-user cron command contents and TCC grant rows are excluded from reports.
+Notarization is distribution context only and never overrides behavioral
+evidence.
 
 ## 0.16 — Continuous local operation
 

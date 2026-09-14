@@ -327,12 +327,14 @@ def scan_behavior(
     excluded_pids: Optional[Iterable[int]] = None,
 ) -> BehaviorReport:
     from .injection import loaded_image_sensor
+    from .persistence_atlas import persistence_atlas_sensor
 
     process_check, process_findings, processes = process_sensor(home, excluded_pids)
     persistence_check, persistence_findings = persistence_sensor(persistence_paths, home)
     network_check, network_findings = network_sensor(processes, home)
     image_check, image_findings = loaded_image_sensor(processes, home)
+    atlas_check, atlas_findings = persistence_atlas_sensor(Path(home) if home else None)
     return BehaviorReport(
-        sensors=[process_check, persistence_check, network_check, image_check],
-        findings=process_findings + persistence_findings + network_findings + image_findings,
+        sensors=[process_check, persistence_check, atlas_check, network_check, image_check],
+        findings=process_findings + persistence_findings + atlas_findings + network_findings + image_findings,
     )

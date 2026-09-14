@@ -24,6 +24,7 @@
     <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8.5 10V7.5a3.5 3.5 0 0 1 7 0V10M12 14v3"/></symbol>
     <symbol id="i-scan" viewBox="0 0 24 24"><path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4"/><circle cx="12" cy="12" r="4"/><path d="m15 15 3 3"/></symbol>
     <symbol id="i-lab" viewBox="0 0 24 24"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4A2 2 0 0 0 19 18l-5-9V3"/><path d="M7.5 15h9M9.5 12h5"/></symbol>
+    <symbol id="i-atlas" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 3v5M12 16v5M3 12h5M16 12h5"/></symbol>
   </svg>
   <div class="shell">
     <aside class="sidebar">
@@ -36,6 +37,7 @@
         <button class="nav-item active" data-view="dashboard"><span class="nav-icon"><svg><use href="#i-grid"></use></svg></span>Dashboard<i></i></button>
         <button class="nav-item" data-view="findings"><span class="nav-icon"><svg><use href="#i-shield"></use></svg></span>Findings<i></i></button>
         <button class="nav-item" data-view="deep-scan"><span class="nav-icon"><svg><use href="#i-scan"></use></svg></span>Deep Scan<i></i></button>
+        <button class="nav-item" data-view="persistence"><span class="nav-icon"><svg><use href="#i-atlas"></use></svg></span>Persistence<i></i></button>
         <button class="nav-item" data-view="detection-lab"><span class="nav-icon"><svg><use href="#i-lab"></use></svg></span>Detection Lab<i></i></button>
         <button class="nav-item" data-view="ransomware"><span class="nav-icon"><svg><use href="#i-lock"></use></svg></span>Ransomware<i></i></button>
         <button class="nav-item" data-view="bluepulse"><span class="nav-icon"><svg><use href="#i-pulse"></use></svg></span>BluePulse<i></i></button>
@@ -47,7 +49,7 @@
       </nav>
       <div class="sidebar-status">
         <span id="sidebar-dot" class="status-dot unknown"></span>
-        <div><strong id="sidebar-label">Awaiting scan</strong><small>Community Preview <span id="app-version">0.14.0</span></small></div>
+        <div><strong id="sidebar-label">Awaiting scan</strong><small>Community Preview <span id="app-version">0.15.0</span></small></div>
       </div>
     </aside>
 
@@ -92,6 +94,11 @@
         <section id="detection-lab" class="view">
           <div class="page-heading"><small>OPEN DETECTION ENGINEERING</small><h1>ReplayForge + Chainlight</h1><p>Prove rules against harmless fixtures, measure regressions, and inspect the resulting attack chain.</p></div>
           <div id="detection-lab-content"></div>
+        </section>
+
+        <section id="persistence" class="view">
+          <div class="page-heading"><small>AUTOSTART &amp; SECURITY DRIFT</small><h1>Persistence Atlas</h1><p>Map the places software can survive a restart, with source-by-source coverage and explainable trust context.</p></div>
+          <div id="persistence-content"></div>
         </section>
 
         <section id="bluepulse" class="view">

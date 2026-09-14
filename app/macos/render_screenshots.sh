@@ -27,6 +27,8 @@ xcrun --sdk macosx clang \
     "$repository_root/docs/images/rattler-deep-scan.png" deep-scan
 "$renderer" "$web_page" "$repository_root/docs/fixtures/ui-lab.json" \
     "$repository_root/docs/images/rattler-detection-lab.png" detection-lab
+"$renderer" "$web_page" "$repository_root/docs/fixtures/ui-persistence.json" \
+    "$repository_root/docs/images/rattler-persistence.png" persistence
 
 sips -z 760 1180 "$repository_root/docs/images/rattler-healthy.png" >/dev/null
 sips -z 760 1180 "$repository_root/docs/images/rattler-risk.png" >/dev/null
@@ -34,3 +36,4 @@ sips -z 760 1180 "$repository_root/docs/images/rattler-bluepulse.png" >/dev/null
 sips -z 760 1180 "$repository_root/docs/images/rattler-ransomware.png" >/dev/null
 sips -z 760 1180 "$repository_root/docs/images/rattler-deep-scan.png" >/dev/null
 sips -z 760 1180 "$repository_root/docs/images/rattler-detection-lab.png" >/dev/null
+sips -z 760 1180 "$repository_root/docs/images/rattler-persistence.png" >/dev/null

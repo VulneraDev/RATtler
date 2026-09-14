@@ -34,6 +34,13 @@ through the production correlators. Chainlight renders stable, time-ordered
 evidence and conservative ATT&CK context. Fixtures are metadata-only, bounded,
 and bundled under app Resources so the same contracts run in the UI, CLI, and CI.
 
+Persistence Atlas maps eleven independent macOS autostart and configuration
+sources. The view keeps collector health, observed objects, and alert rules
+separate so a normal extension or profile is not presented as malware. Source
+traversal, command output, manifest reads, and signing checks are bounded;
+symbolic links are never followed. See the
+[source and privacy reference](../../docs/PERSISTENCE_ATLAS.md).
+
 ## Install the app
 
 Download one ZIP from the main [README](../../README.md), open it, then drag

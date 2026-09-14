@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const state = { report: null, fileScan: null, detectionLab: null, quarantine: [], exceptions: [], capabilities: { baseline: false, nativeEvents: false, yaraRules: false, detectionLab: false, recovery: false, recoveryFrozen: false, recoveryError: false, installed: true, appPath: "", version: "0.14.0" }, phase: "starting", autoTimer: null };
+  const state = { report: null, fileScan: null, detectionLab: null, quarantine: [], exceptions: [], capabilities: { baseline: false, nativeEvents: false, yaraRules: false, detectionLab: false, recovery: false, recoveryFrozen: false, recoveryError: false, installed: true, appPath: "", version: "0.15.0" }, phase: "starting", autoTimer: null };
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const esc = value => String(value ?? "—").replace(/[&<>'"]/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[char]));
@@ -25,6 +25,7 @@
   const findingRow = finding => `<div class="finding-row ${esc(finding.severity)}"><div class="finding-main"><strong>${esc(finding.title)}</strong><p>${esc(finding.message)}</p><span class="meta">${esc(finding.rule_id)} &nbsp;•&nbsp; ${esc(title(finding.category))}</span></div>${badge(finding.severity)}</div>`;
   const pulseCheck = behavior => (behavior?.sensors || []).find(item => item.name === "bluepulse");
   const ransomwareCheck = behavior => (behavior?.sensors || []).find(item => item.name === "ransomware");
+  const persistenceCheck = behavior => (behavior?.sensors || []).find(item => item.name === "persistence_atlas");
   const scanFreshness = report => {
     if (document.documentElement.classList.contains("snapshot")) return { fresh:true, age:0 };
     const observed = Date.parse(report?.observed_at || "");
@@ -207,6 +208,37 @@
     $("#reveal-recovery-button")?.addEventListener("click",()=>native("revealRecovery"));
     $("#resume-recovery-button")?.addEventListener("click",()=>native("resumeRecovery"));
   }
+  function renderPersistence() {
+    const target = $("#persistence-content");
+    if (!state.report) { target.innerHTML = empty("◎","No persistence map yet","Run a scan to inventory macOS autostart and security-drift sources."); return; }
+    const behavior = state.report.behavior || {};
+    const sensor = persistenceCheck(behavior) || {status:"unknown",message:"Persistence Atlas unavailable",details:{}};
+    const details = sensor.details || {}, sources = Array.isArray(details.sources) ? details.sources : [];
+    const findings = (behavior.findings || []).filter(item => item.category === "persistence").sort((a,b)=>severityRank(b.severity)-severityRank(a.severity));
+    const urgent = findings.some(item => ["critical","high"].includes(item.severity));
+    const heroStatus = urgent ? "unhealthy" : findings.length || sensor.status !== "healthy" ? "degraded" : "healthy";
+    const headline = urgent ? "A persistence path needs investigation" : findings.length ? "Persistence changes need review" : sensor.status === "healthy" ? "Autostart surfaces are mapped" : "Some persistence sources are unavailable";
+    const copy = urgent ? "RATtler found a high-confidence ownership, permission, signing, preload, or staging-path signal." : sensor.status === "healthy" ? "Every supported source reported independently, and no persistence rule crossed its alert threshold." : "Available sources remain visible; denied or limited sources are named instead of silently treated as clean.";
+    const sourceCards = sources.map(source => {
+      const sourceStatus = source.status || "unknown", count = Number(source.count || 0);
+      const suffix = source.limited ? " · safety limit reached" : Array.isArray(source.errors) && source.errors.length ? ` · ${source.errors.length} coverage gap${source.errors.length===1?"":"s"}` : "";
+      return `<article class="panel atlas-source ${esc(sourceStatus)}"><div class="atlas-source-head"><span>${sourceStatus === "healthy" ? "✓" : "!"}</span><div><strong>${esc(source.label || title(source.id))}</strong><small>${count.toLocaleString()} object${count===1?"":"s"}${esc(suffix)}</small></div><em>${esc(sourceStatus.toUpperCase())}</em></div><p>${esc(source.message || "Source state unavailable")}</p></article>`;
+    }).join("");
+    const objects = sources.flatMap(source => (source.items || []).map(item => ({...item, sourceLabel:source.label || title(source.id)}))).slice(0,10);
+    const objectRows = objects.map(item => {
+      const rawPath = typeof item.path === "string" ? item.path : "";
+      const name = item.name || (rawPath ? rawPath.split("/").filter(Boolean).pop() : title(item.kind));
+      const context = [item.sourceLabel, item.version ? `v${item.version}` : "", item.signature ? title(item.signature) : "", item.mode ? `mode ${item.mode}` : ""].filter(Boolean).join(" · ");
+      return `<div class="atlas-object"><span>${icon(item.kind === "login_item" ? "refresh" : item.source === "browser_extensions" ? "coverage" : "folder")}</span><div><strong>${esc(name)}</strong><small>${esc(context)}</small></div><em>${item.symbolic_link ? "LINK" : item.signature_valid === false ? "REVIEW" : "OBSERVED"}</em></div>`;
+    }).join("");
+    const alertRows = findings.length ? findings.slice(0,4).map(finding => `<div class="atlas-finding">${findingRow(finding)}${evidence(finding.evidence)}</div>`).join("") : `<div class="ransom-clear"><span>✓</span><div><strong>No persistence alerts</strong><p>Installed profiles, extensions, and autostart entries are inventory context—not automatic malware labels.</p></div></div>`;
+    target.innerHTML = `
+      <article class="panel atlas-hero ${esc(heroStatus)}"><div class="atlas-orbit"><i></i><b></b><span>${icon("atlas")}</span></div><div><div class="status-kicker">${heroStatus === "healthy" ? "SOURCE-AWARE COVERAGE" : urgent ? "ACTION REQUIRED" : "PARTIAL COVERAGE"}</div><h2>${esc(headline)}</h2><p>${esc(copy)}</p><small>Bounded locally · symbolic links are never followed · each source can degrade independently</small></div><div class="atlas-radar"><i></i><i></i><i></i><span></span></div></article>
+      <div class="metrics atlas-metrics">${metric(`${Number(details.sources_healthy||0)}/${Number(details.sources_checked||sources.length)}`,"Sources healthy","Independent collectors","check",sensor.status==="healthy"?"":"warning")}${metric(Number(details.items||0).toLocaleString(),"Objects mapped","Bounded inventory","atlas","info")}${metric(Number(details.baseline_assets||0).toLocaleString(),"Drift anchors","Eligible for hashing","shield","")}${metric(findings.length,"Alerts",findings.length?"Review evidence":"No active signal","alert",findings.length?"danger":"")}</div>
+      <div class="atlas-layout"><div><div class="card-title"><div><h3>Source coverage</h3><p>One denied permission cannot hide the other collectors</p></div><span>${sources.length} sources</span></div><div class="atlas-source-grid">${sourceCards || empty("◎","No source detail","This report predates Persistence Atlas.")}</div></div><article class="panel card-block"><div class="card-title"><div><h3>Observed objects</h3><p>A compact preview; the exported report retains bounded context</p></div><span>${objects.length} shown</span></div><div class="atlas-objects">${objectRows || "<span>No objects were returned by available sources.</span>"}</div></article></div>
+      <article class="panel card-block atlas-alerts"><div class="card-title"><div><h3>Persistence signals</h3><p>Precise rules for unsafe ownership, links, preload directives, risky paths, signing, and update transport</p></div><span>${findings.length} active</span></div>${alertRows}</article>`;
+    $$(".atlas-finding", target).forEach(row => row.addEventListener("click", () => row.classList.toggle("expanded")));
+  }
   function renderBluePulse() {
     if (!state.report) { $("#bluepulse-content").innerHTML = empty("⌁","No confidence report yet","Run a scan so BluePulse can verify each available layer."); return; }
     const protection = state.report.protection || {}, behavior = state.report.behavior || {};
@@ -278,7 +310,7 @@
     $("#sidebar-label").textContent = state.report ? statusLabel(status) : "Awaiting scan";
     $("#export-button").disabled = !state.report;
   }
-  function renderAll() { renderDashboard(); renderFindings(); renderFileScan(); renderDetectionLab(); renderRansomware(); renderBluePulse(); renderActivity(); renderSettings(); renderChrome(); }
+  function renderAll() { renderDashboard(); renderFindings(); renderFileScan(); renderDetectionLab(); renderRansomware(); renderPersistence(); renderBluePulse(); renderActivity(); renderSettings(); renderChrome(); }
   function showToast(message, success = false) { const toast=$("#toast"); $("strong",toast).textContent=success ? "Response completed" : "RATtler needs attention"; $("p",toast).textContent=message; toast.classList.toggle("success",success); toast.classList.add("visible"); clearTimeout(showToast.timer); showToast.timer=setTimeout(()=>toast.classList.remove("visible"),7000); }
 
   window.RATtler = {
