@@ -11,6 +11,7 @@ from rattler.suppressions import (
     apply_exceptions,
     load_policy,
     remove_exception,
+    validate_match,
 )
 
 
@@ -18,6 +19,13 @@ NOW = datetime(2026, 9, 14, 12, 0, tzinfo=timezone.utc)
 
 
 class SuppressionPolicyTests(unittest.TestCase):
+    def test_accepts_and_canonicalizes_a_native_windows_path(self):
+        match = validate_match({
+            "path": r"C:\Users\Example\Downloads\Tool.exe",
+            "sha256": "a" * 64,
+        })
+        self.assertEqual(match["path"], r"c:\users\example\downloads\tool.exe")
+
     def test_refuses_path_only_exception(self):
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaisesRegex(ValueError, "CDHash, SHA-256"):

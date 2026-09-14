@@ -2,7 +2,9 @@
 
 import argparse
 import json
+import ntpath
 import os
+import posixpath
 import re
 import stat
 import tempfile
@@ -49,6 +51,15 @@ def _hex(value: str, lengths: Tuple[int, ...], label: str) -> str:
     return normalized
 
 
+def _canonical_path(path: str) -> str:
+    """Normalize either a native Windows path or an absolute POSIX path."""
+    if ntpath.isabs(path) and not posixpath.isabs(path):
+        return ntpath.normcase(ntpath.normpath(path))
+    if posixpath.isabs(path):
+        return os.path.realpath(path) if os.name != "nt" else posixpath.normpath(path)
+    raise ValueError("exceptions require an absolute path")
+
+
 def validate_match(match: Dict[str, object]) -> Dict[str, str]:
     if not isinstance(match, dict) or not match or set(match) - MATCH_KEYS:
         raise ValueError("exception match fields are invalid")
@@ -58,9 +69,9 @@ def validate_match(match: Dict[str, object]) -> Dict[str, str]:
             raise ValueError("exception %s must be a non-empty string" % key)
         normalized[key] = raw
     path = normalized.get("path")
-    if not path or not os.path.isabs(path):
+    if not path:
         raise ValueError("exceptions require an absolute path")
-    normalized["path"] = os.path.realpath(path)
+    normalized["path"] = _canonical_path(path)
     if "cdhash" in normalized:
         normalized["cdhash"] = _hex(normalized["cdhash"], (40, 64), "CDHash")
     if "sha256" in normalized:
@@ -162,15 +173,17 @@ def _matches(entry: Dict[str, object], rule_id: str, evidence: Dict[str, object]
         return False
     match = entry["match"]
     sources = {
-        "path": {
-            os.path.realpath(value) for value in _evidence_values(evidence, PATH_EVIDENCE)
-            if os.path.isabs(value)
-        },
+        "path": set(),
         "cdhash": {value.lower() for value in _evidence_values(evidence, CDHASH_EVIDENCE)},
         "sha256": {value.lower() for value in _evidence_values(evidence, SHA256_EVIDENCE)},
         "team_id": _evidence_values(evidence, TEAM_EVIDENCE),
         "identifier": _evidence_values(evidence, IDENTIFIER_EVIDENCE),
     }
+    for value in _evidence_values(evidence, PATH_EVIDENCE):
+        try:
+            sources["path"].add(_canonical_path(value))
+        except ValueError:
+            pass
     return all(value in sources[key] for key, value in match.items())
 
 
