@@ -2,11 +2,13 @@ import argparse
 import json
 import sys
 import time
+from pathlib import Path
 from typing import Optional, Sequence
 
 from .assessment import build_assessment
+from .baseline import check_baseline, create_baseline
 from .behavior import scan_behavior
-from .model import Assessment, Status
+from .model import Assessment, BehaviorReport, Status
 from .providers import select_provider
 
 
@@ -27,6 +29,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--interval", type=float, default=60.0, help="seconds between checks")
     parser.add_argument("--changes-only", action="store_true", help="in watch mode, emit only changes")
     parser.add_argument("--pretty", action="store_true", help="pretty-print JSON")
+    baseline = parser.add_mutually_exclusive_group()
+    baseline.add_argument("--create-baseline", metavar="PATH", help="write a known-good integrity baseline")
+    baseline.add_argument("--baseline", metavar="PATH", help="check an existing integrity baseline")
     return parser
 
 
@@ -38,11 +43,28 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = _parser().parse_args(argv)
     if args.interval <= 0:
         _parser().error("--interval must be greater than zero")
+    if args.create_baseline:
+        if args.watch:
+            _parser().error("--create-baseline cannot be combined with --watch")
+        try:
+            summary = create_baseline(Path(args.create_baseline))
+        except (OSError, ValueError) as error:
+            print(json.dumps({"error": "could not create baseline", "detail": str(error)}), file=sys.stderr)
+            return 2
+        print(json.dumps(summary, indent=2 if args.pretty else None, sort_keys=True))
+        return 0
     provider = select_provider()
     previous = None
     try:
         while True:
-            report = build_assessment(provider, scan_behavior())
+            behavior = scan_behavior()
+            if args.baseline:
+                baseline_check, baseline_findings = check_baseline(Path(args.baseline))
+                behavior = BehaviorReport(
+                    sensors=behavior.sensors + [baseline_check],
+                    findings=behavior.findings + baseline_findings,
+                )
+            report = build_assessment(provider, behavior)
             fingerprint = json.dumps(
                 {
                     "status": report.status,

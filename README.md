@@ -33,6 +33,21 @@ rattler --pretty
 rattler --watch --interval 30 --changes-only
 ```
 
+Create a known-good integrity baseline only after reviewing a clean scan, then
+include it in later scans:
+
+```sh
+rattler --create-baseline ~/.rattler/baseline.json --pretty
+rattler --baseline ~/.rattler/baseline.json --pretty
+rattler --baseline ~/.rattler/baseline.json --watch --changes-only
+```
+
+The baseline tracks SHA-256 content, size, permissions, ownership, and symlink
+targets for launchd plists, their existing executables, and active Mach-O code in
+user-writable locations. It is written atomically with mode `0600`. Because
+same-user malware could replace both files and a local baseline, keep a protected
+or remotely attested copy when using RATtler for higher-assurance monitoring.
+
 Without installing:
 
 ```sh

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0
+
+- Create permission-restricted, atomic SHA-256 integrity baselines
+- Track launchd plists, startup executables, and active user-writable Mach-O code
+- Detect missing, modified, replaced, and newly introduced baseline assets
+- Compare content, ownership, mode, size, and symbolic-link targets
+- Integrate baseline drift into normal risk scoring and watch-mode output
+
 ## 0.3.0
 
 - Inventory file-backed executable mappings in eligible macOS processes
