@@ -50,6 +50,8 @@
     NSData *capabilities = [NSJSONSerialization dataWithJSONObject:@{
         @"baseline": @YES,
         @"nativeEvents": @YES,
+        @"fileEvents": @YES,
+        @"fileEventRoots": @3,
         @"recovery": @YES,
         @"recoveryFrozen": @([self.viewID isEqualToString:@"ransomware"]),
         @"recoveryError": @NO,
@@ -60,7 +62,7 @@
         @"launchAtLogin": @YES,
         @"launchAtLoginStatus": @"enabled",
         @"notificationsEnabled": @YES,
-        @"version": @"0.16.0",
+        @"version": @"0.17.0",
     } options:0 error:nil];
     NSData *ready = [NSJSONSerialization dataWithJSONObject:@{
         @"phase": @"ready",

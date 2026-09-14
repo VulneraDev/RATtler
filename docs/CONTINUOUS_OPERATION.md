@@ -1,17 +1,19 @@
 # Continuous local operation
 
-RATtler 0.16 moves scheduled endpoint scans into the native macOS host. The
-host remains available from the menu bar after the main window closes and runs
-a bounded scan every 60 seconds while monitoring is active.
+RATtler's native macOS host remains available from the menu bar after the main
+window closes, runs a bounded scan every 60 seconds, and—starting in 0.17—uses
+FSEvents to trigger ransomware snapshots within seconds of protected-folder
+activity.
 
 ## Everyday controls
 
 Use the **R** menu-bar item or **Settings → Monitoring**:
 
 - **Scan Now** runs a manual scan even when scheduling is paused.
-- **Pause Monitoring** stops future scheduled scans but lets a scan already in
-  progress finish. It keeps the menu-bar controller and manual scan available.
-  BluePulse reports the paused state as reduced confidence.
+- **Pause Monitoring** stops future scheduled and file-event-triggered scans but
+  lets a scan already in progress finish. It keeps the menu-bar controller and
+  manual scan available. BluePulse reports the paused state as reduced
+  confidence.
 - **Start at Login** asks macOS Service Management to register the main app. If
   macOS requires approval, open **System Settings → General → Login Items**.
 - **Finding Notifications** are optional. macOS asks for permission the first
@@ -59,7 +61,7 @@ Root-owned state, system-extension lifecycle evidence, execution prevention,
 and protected real-time event collection remain gated on Apple's restricted
 Endpoint Security entitlement and signed system-extension distribution.
 
-RATtler 0.16 also does not perform an in-app update. Updates are manual: quit
+RATtler also does not perform an in-app update. Updates are manual: quit
 RATtler, download the new architecture-specific ZIP from GitHub Releases, and
 replace the old app. Signed update metadata and rollback protection will be
 added only after Developer ID signing, hardened runtime, and notarization are

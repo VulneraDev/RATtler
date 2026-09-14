@@ -1,10 +1,16 @@
 #import <AppKit/AppKit.h>
+#import <CoreServices/CoreServices.h>
 #import <ServiceManagement/ServiceManagement.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <UserNotifications/UserNotifications.h>
 #import <WebKit/WebKit.h>
 #import <sys/stat.h>
 #import <unistd.h>
+
+static void RATFileEventCallback(ConstFSEventStreamRef streamRef, void *clientCallBackInfo,
+                                 size_t numEvents, void *eventPaths,
+                                 const FSEventStreamEventFlags eventFlags[],
+                                 const FSEventStreamEventId eventIds[]);
 
 @interface RATAppDelegate : NSObject <NSApplicationDelegate, WKScriptMessageHandler, WKNavigationDelegate, UNUserNotificationCenterDelegate>
 @property(nonatomic, strong) NSWindow *window;
@@ -21,6 +27,20 @@
 @property(nonatomic, strong) NSMenuItem *loginMenuItem;
 @property(nonatomic, strong) NSMenuItem *notificationMenuItem;
 @property(nonatomic, strong) NSTimer *scanTimer;
+@property(nonatomic, assign) FSEventStreamRef fileEventStream;
+@property(nonatomic, assign) BOOL fileEventStreamActive;
+@property(nonatomic, assign) BOOL fileEventDropPending;
+@property(nonatomic, assign) NSUInteger fileEventDropGeneration;
+@property(nonatomic, assign) NSUInteger fileEventCount;
+@property(nonatomic, assign) NSUInteger fileEventDropCount;
+@property(nonatomic, assign) NSUInteger fileEventTriggeredScans;
+@property(nonatomic, assign) NSUInteger pendingFileEvents;
+@property(nonatomic, assign) NSUInteger fileEventRoots;
+@property(nonatomic, assign) FSEventStreamEventId lastFileEventID;
+@property(nonatomic, strong) NSDate *fileEventStartedDate;
+@property(nonatomic, strong) NSDate *lastFileEventDate;
+@property(nonatomic, strong) NSDate *lastFileEventScanDate;
+@property(nonatomic, strong) NSTimer *fileEventScanTimer;
 - (NSString *)responseErrorFromResult:(NSDictionary *)result fallback:(NSString *)fallback;
 - (BOOL)isValidSHA256:(NSString *)digest;
 - (BOOL)isValidCDHash:(NSString *)digest;
@@ -50,6 +70,15 @@
 - (NSURL *)operationStateURL;
 - (NSURL *)lastReportURL;
 - (void)reconcileNotificationAuthorization;
+- (void)setupFileEventStream;
+- (void)writeFileEventState;
+- (NSURL *)fileEventStateURL;
+- (void)handleFileEventPaths:(NSArray<NSString *> *)paths
+                       flags:(const FSEventStreamEventFlags *)flags
+                         ids:(const FSEventStreamEventId *)ids
+                       count:(size_t)count;
+- (void)scheduleFileEventScanAfter:(NSTimeInterval)delay;
+- (void)triggerFileEventScan:(NSTimer *)timer;
 @end
 
 @implementation RATAppDelegate
@@ -94,6 +123,7 @@
 
     [self setupStatusItem];
     [self reconcileNotificationAuthorization];
+    [self setupFileEventStream];
     self.scanTimer = [NSTimer timerWithTimeInterval:60.0
                                              target:self
                                            selector:@selector(scheduledScan:)
@@ -101,6 +131,7 @@
                                             repeats:YES];
     [[NSRunLoop mainRunLoop] addTimer:self.scanTimer forMode:NSRunLoopCommonModes];
     [self writeOperationState];
+    [self writeFileEventState];
 
     NSURL *page = [[NSBundle mainBundle] URLForResource:@"index" withExtension:@"html" subdirectory:@"Web"];
     NSURL *directory = [page URLByDeletingLastPathComponent];
@@ -126,6 +157,13 @@
 - (void)applicationWillTerminate:(NSNotification *)notification {
     (void)notification;
     [self.scanTimer invalidate];
+    [self.fileEventScanTimer invalidate];
+    if (self.fileEventStream != NULL) {
+        FSEventStreamStop(self.fileEventStream);
+        FSEventStreamInvalidate(self.fileEventStream);
+        FSEventStreamRelease(self.fileEventStream);
+        self.fileEventStream = NULL;
+    }
 }
 
 - (BOOL)applicationSupportsSecureRestorableState:(NSApplication *)application {
@@ -201,6 +239,7 @@
 - (void)scheduledScan:(NSTimer *)timer {
     (void)timer;
     [self writeOperationState];
+    [self writeFileEventState];
     if (!self.monitoringPaused) [self startScan];
 }
 
@@ -219,7 +258,10 @@
         @"phase": @"ready",
         @"message": paused ? @"Continuous monitoring is paused" : @"Continuous monitoring is active",
     } function:@"receiveState"];
-    if (!paused) [self startScan];
+    if (!paused) {
+        self.pendingFileEvents = 0;
+        [self startScan];
+    }
 }
 
 - (BOOL)launchAtLoginEnabled {
@@ -468,6 +510,153 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
     return [[self applicationDataDirectory] URLByAppendingPathComponent:@"last-report.json"];
 }
 
+- (NSURL *)fileEventStateURL {
+    return [[self applicationDataDirectory] URLByAppendingPathComponent:@"fsevents-state.json"];
+}
+
+- (void)setupFileEventStream {
+    self.fileEventStartedDate = [NSDate date];
+    NSString *home = NSHomeDirectory();
+    NSMutableArray<NSString *> *roots = [NSMutableArray array];
+    for (NSString *name in @[@"Desktop", @"Documents", @"Pictures"]) {
+        NSString *path = [[home stringByAppendingPathComponent:name] stringByStandardizingPath];
+        BOOL directory = NO;
+        if ([[NSFileManager defaultManager] fileExistsAtPath:path isDirectory:&directory] && directory) {
+            [roots addObject:path];
+        }
+    }
+    self.fileEventRoots = roots.count;
+    if (roots.count == 0) {
+        self.fileEventStreamActive = NO;
+        [self writeFileEventState];
+        return;
+    }
+
+    FSEventStreamContext context = {0, (__bridge void *)self, NULL, NULL, NULL};
+    FSEventStreamCreateFlags createFlags = kFSEventStreamCreateFlagUseCFTypes |
+        kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagNoDefer |
+        kFSEventStreamCreateFlagWatchRoot;
+    self.fileEventStream = FSEventStreamCreate(
+        NULL, RATFileEventCallback, &context, (__bridge CFArrayRef)roots,
+        kFSEventStreamEventIdSinceNow, 1.0, createFlags
+    );
+    if (self.fileEventStream == NULL) {
+        self.fileEventStreamActive = NO;
+        [self writeFileEventState];
+        return;
+    }
+    FSEventStreamSetDispatchQueue(self.fileEventStream, dispatch_get_main_queue());
+    self.fileEventStreamActive = FSEventStreamStart(self.fileEventStream);
+    [self writeFileEventState];
+}
+
+- (void)writeFileEventState {
+    NSISO8601DateFormatter *formatter = [[NSISO8601DateFormatter alloc] init];
+    formatter.formatOptions = NSISO8601DateFormatWithInternetDateTime | NSISO8601DateFormatWithFractionalSeconds;
+    NSDictionary *state = @{
+        @"schema": @1,
+        @"pid": @(getpid()),
+        @"updated_at": [formatter stringFromDate:[NSDate date]],
+        @"started_at": self.fileEventStartedDate ? [formatter stringFromDate:self.fileEventStartedDate] : [NSNull null],
+        @"stream_active": @(self.fileEventStreamActive),
+        @"roots_watched": @(self.fileEventRoots),
+        @"latency_seconds": @1.0,
+        @"events_seen": @(self.fileEventCount),
+        @"triggered_scans": @(self.fileEventTriggeredScans),
+        @"dropped_events_total": @(self.fileEventDropCount),
+        @"unreconciled_drop": @(self.fileEventDropPending),
+        @"last_event_id": @(self.lastFileEventID),
+        @"last_event_at": self.lastFileEventDate ? [formatter stringFromDate:self.lastFileEventDate] : [NSNull null],
+        @"path_data_retained": @NO,
+    };
+    NSData *data = [NSJSONSerialization dataWithJSONObject:state options:0 error:nil];
+    NSURL *destination = [self fileEventStateURL];
+    if ([data writeToURL:destination options:NSDataWritingAtomic error:nil]) {
+        chmod(destination.fileSystemRepresentation, 0600);
+    }
+}
+
+- (void)handleFileEventPaths:(NSArray<NSString *> *)paths
+                       flags:(const FSEventStreamEventFlags *)flags
+                         ids:(const FSEventStreamEventId *)ids
+                       count:(size_t)count {
+    if (count == 0) return;
+    BOOL urgent = NO;
+    BOOL dropped = NO;
+    NSSet<NSString *> *encryptedSuffixes = [NSSet setWithArray:@[
+        @"crypted", @"crypto", @"crypt", @"encrypted", @"enc", @"locked",
+        @"lockbit", @"ryk", @"ryuk", @"wannacry", @"wncry",
+    ]];
+    NSSet<NSString *> *ransomNotes = [NSSet setWithArray:@[
+        @"decrypt_instructions.txt", @"how_to_decrypt.txt", @"how_to_restore_files.txt",
+        @"readme_to_decrypt.txt", @"recover_files.txt", @"restore_files.txt",
+    ]];
+    for (size_t index = 0; index < count; index++) {
+        FSEventStreamEventFlags eventFlag = flags[index];
+        if (eventFlag & (kFSEventStreamEventFlagMustScanSubDirs |
+                         kFSEventStreamEventFlagUserDropped |
+                         kFSEventStreamEventFlagKernelDropped |
+                         kFSEventStreamEventFlagEventIdsWrapped |
+                         kFSEventStreamEventFlagRootChanged)) {
+            dropped = YES;
+        }
+        if (index < paths.count && [paths[index] isKindOfClass:[NSString class]]) {
+            NSString *name = paths[index].lastPathComponent.lowercaseString;
+            NSString *suffix = paths[index].pathExtension.lowercaseString;
+            if ([encryptedSuffixes containsObject:suffix] || [ransomNotes containsObject:name]) urgent = YES;
+        }
+        self.lastFileEventID = ids[index];
+    }
+    self.fileEventCount += count;
+    self.pendingFileEvents += count;
+    self.lastFileEventDate = [NSDate date];
+    if (dropped) {
+        self.fileEventDropCount += 1;
+        self.fileEventDropGeneration += 1;
+        self.fileEventDropPending = YES;
+        urgent = YES;
+    }
+    [self writeFileEventState];
+    if (self.monitoringPaused) return;
+    [self scheduleFileEventScanAfter:urgent ? 0.25 : 2.0];
+}
+
+- (void)scheduleFileEventScanAfter:(NSTimeInterval)delay {
+    if (self.fileEventScanTimer != nil) return;
+    self.fileEventScanTimer = [NSTimer timerWithTimeInterval:delay
+                                                     target:self
+                                                   selector:@selector(triggerFileEventScan:)
+                                                   userInfo:nil
+                                                    repeats:NO];
+    [[NSRunLoop mainRunLoop] addTimer:self.fileEventScanTimer forMode:NSRunLoopCommonModes];
+}
+
+- (void)triggerFileEventScan:(NSTimer *)timer {
+    (void)timer;
+    self.fileEventScanTimer = nil;
+    if (self.monitoringPaused) {
+        self.pendingFileEvents = 0;
+        [self writeFileEventState];
+        return;
+    }
+    if (self.scanning) {
+        [self scheduleFileEventScanAfter:2.0];
+        return;
+    }
+    if (self.lastFileEventScanDate != nil) {
+        NSTimeInterval elapsed = -[self.lastFileEventScanDate timeIntervalSinceNow];
+        if (elapsed < 10.0) {
+            [self scheduleFileEventScanAfter:10.0 - elapsed];
+            return;
+        }
+    }
+    self.pendingFileEvents = 0;
+    self.fileEventTriggeredScans += 1;
+    self.lastFileEventScanDate = [NSDate date];
+    [self writeFileEventState];
+    [self startScan];
+}
+
 - (void)writeOperationState {
     NSISO8601DateFormatter *formatter = [[NSISO8601DateFormatter alloc] init];
     formatter.formatOptions = NSISO8601DateFormatWithInternetDateTime | NSISO8601DateFormatWithFractionalSeconds;
@@ -558,11 +747,13 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
     NSURL *ransomwareState = [directory URLByAppendingPathComponent:@"ransomware-state.json"];
     NSURL *exceptions = [directory URLByAppendingPathComponent:@"exceptions.json"];
     NSURL *operationState = [self operationStateURL];
+    NSURL *fileEventState = [self fileEventStateURL];
     NSString *home = NSHomeDirectory();
     NSMutableArray<NSString *> *arguments = [NSMutableArray arrayWithArray:@[
         @"--state", state.path, @"--journal", journal.path,
         @"--ransomware-state", ransomwareState.path,
         @"--operation-state", operationState.path,
+        @"--fsevents-state", fileEventState.path,
         @"--exceptions", exceptions.path,
         @"--ransomware-root", [home stringByAppendingPathComponent:@"Desktop"],
         @"--ransomware-root", [home stringByAppendingPathComponent:@"Documents"],
@@ -637,6 +828,8 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
     if (self.scanning) return;
     self.scanning = YES;
     [self writeOperationState];
+    [self writeFileEventState];
+    NSUInteger dropGenerationAtScanStart = self.fileEventDropGeneration;
     [self sendObject:@{@"phase": @"scanning", @"message": @"Inspecting this Mac…"}
             function:@"receiveState"];
     NSArray<NSString *> *arguments = [self scanArguments];
@@ -661,6 +854,9 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
             NSError *jsonError = nil;
             id report = output.length ? [NSJSONSerialization JSONObjectWithData:output options:0 error:&jsonError] : nil;
             if ([report isKindOfClass:[NSDictionary class]]) {
+                if (dropGenerationAtScanStart == self.fileEventDropGeneration) {
+                    self.fileEventDropPending = NO;
+                }
                 self.lastReport = output;
                 self.lastScanDate = [NSDate date];
                 [self persistLastReport];
@@ -676,6 +872,7 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
                         function:@"receiveState"];
             }
             [self writeOperationState];
+            [self writeFileEventState];
             [self sendCapabilities];
         });
     });
@@ -1340,6 +1537,8 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
     [self sendObject:@{
         @"baseline": @(baseline),
         @"nativeEvents": @(nativeEvents),
+        @"fileEvents": @(self.fileEventStreamActive),
+        @"fileEventRoots": @(self.fileEventRoots),
         @"yaraRules": @(yaraRules),
         @"detectionLab": @(detectionLab),
         @"recovery": @([self recoveryEnabled]),
@@ -1353,7 +1552,7 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
         @"launchAtLogin": @([self launchAtLoginEnabled]),
         @"launchAtLoginStatus": [self launchAtLoginStatus],
         @"notificationsEnabled": @(self.notificationsEnabled),
-        @"version": @"0.16.0",
+        @"version": @"0.17.0",
     }
             function:@"receiveCapabilities"];
 }
@@ -1381,6 +1580,16 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
 }
 
 @end
+
+static void RATFileEventCallback(ConstFSEventStreamRef streamRef, void *clientCallBackInfo,
+                                 size_t numEvents, void *eventPaths,
+                                 const FSEventStreamEventFlags eventFlags[],
+                                 const FSEventStreamEventId eventIds[]) {
+    (void)streamRef;
+    RATAppDelegate *delegate = (__bridge RATAppDelegate *)clientCallBackInfo;
+    NSArray<NSString *> *paths = (__bridge NSArray<NSString *> *)eventPaths;
+    [delegate handleFileEventPaths:paths flags:eventFlags ids:eventIds count:numEvents];
+}
 
 static RATAppDelegate *g_appDelegate;
 

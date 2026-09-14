@@ -49,7 +49,7 @@
       </nav>
       <div class="sidebar-status">
         <span id="sidebar-dot" class="status-dot unknown"></span>
-        <div><strong id="sidebar-label">Awaiting scan</strong><small>Community Preview <span id="app-version">0.16.0</span></small></div>
+        <div><strong id="sidebar-label">Awaiting scan</strong><small>Community Preview <span id="app-version">0.17.0</span></small></div>
       </div>
     </aside>
 
@@ -108,7 +108,7 @@
         </section>
 
         <section id="ransomware" class="view">
-          <div class="page-heading"><small>FILE DEFENSE</small><h1>Ransomware Defense</h1><p>Watch protected folders for encryption-like behavior and destructive file bursts.</p></div>
+          <div class="page-heading"><small>FILE DEFENSE</small><h1>Ransomware Defense</h1><p>Trigger bounded scans from live protected-folder changes and explain encryption-like behavior.</p></div>
           <div id="ransomware-content"></div>
         </section>
 
@@ -125,6 +125,8 @@
               <div class="setting-row"><span class="setting-icon">→</span><div><strong>Installation</strong><p id="installation-description">Checking where RATtler is running.</p></div><span id="installation-state" class="local-badge">CHECKING</span></div>
               <div class="divider"></div>
               <div class="setting-row"><span class="setting-icon">↻</span><div><strong>Continuous monitoring</strong><p id="monitoring-description">The native scheduler checks this Mac every 60 seconds, even when the window is closed.</p></div><button id="monitoring-button" class="quiet-button">Pause</button></div>
+              <div class="divider"></div>
+              <div class="setting-row"><span class="setting-icon">⌁</span><div><strong>Protected-folder event trigger</strong><p id="file-event-description">Checking native FSEvents coverage.</p></div><span id="file-event-state" class="local-badge">CHECKING</span></div>
               <div class="divider"></div>
               <div class="setting-row"><span class="setting-icon">⇥</span><div><strong>Start at login</strong><p id="login-description">Keep protection available after you sign in.</p></div><label class="switch"><input id="login-switch" type="checkbox"><span></span></label></div>
               <div class="divider"></div>

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.17.0
+
+- Add a native file-level FSEvents stream for Desktop, Documents, and Pictures
+  that triggers bounded ransomware scans within seconds while RATtler runs
+- Coalesce ordinary file bursts for two seconds and rate-limit repeated scans
+  to one every ten seconds, with faster triggers for suspicious names and loss
+- Detect user-space drops, kernel drops, event-ID wrap, and watched-root changes;
+  keep loss pending until a newer full snapshot completes successfully
+- Add a private path-free stream heartbeat and a `native_file_events` assurance
+  sensor that verifies ownership, permissions, schema, host PID, and freshness
+- Extend BluePulse, Ransomware Defense, Settings, reproducible screenshots, CLI
+  docs, and the roadmap with honest near-real-time coverage and limitations
+- Validate the complete path on macOS with a harmless file creation: one native
+  event triggered one scan and returned healthy without retaining its path
+
 ## 0.16.0
 
 - Move scheduled scans from the WebKit interface into a native 60-second macOS

@@ -11,8 +11,8 @@ the computer unless you export a report yourself.
 
 Download **one ZIP**—not both:
 
-- [Mac with an Apple chip](https://github.com/VulneraDev/RATtler/releases/download/v0.16.0/RATtler-macOS-Apple-Silicon.zip)
-- [Mac with an Intel processor](https://github.com/VulneraDev/RATtler/releases/download/v0.16.0/RATtler-macOS-Intel.zip)
+- [Mac with an Apple chip](https://github.com/VulneraDev/RATtler/releases/download/v0.17.0/RATtler-macOS-Apple-Silicon.zip)
+- [Mac with an Intel processor](https://github.com/VulneraDev/RATtler/releases/download/v0.17.0/RATtler-macOS-Intel.zip)
 
 Not sure which Mac you have? Open **Apple menu → About This Mac**:
 
@@ -135,11 +135,11 @@ a real threat with high confidence, or no threat while warning that visibility
 is incomplete.
 
 It checks whether available protection and behavioral sensors replied, whether
-the report is fresh, whether the native scan scheduler is alive or paused,
-whether local monitoring files have safe permissions, and whether native
-telemetry reported a heartbeat or dropped events. Optional native telemetry and
-integrity baselines are clearly labeled when they are not configured; their
-absence is not presented as failure.
+the report is fresh, whether the native scan scheduler and protected-folder
+event trigger are alive, whether local monitoring files have safe permissions,
+and whether either event source reported loss. Optional Endpoint Security
+telemetry and integrity baselines are clearly labeled when they are not
+configured; their absence is not presented as failure.
 
 ![RATtler BluePulse detection confidence](docs/images/rattler-bluepulse.png)
 
@@ -150,11 +150,18 @@ for changes commonly associated with encryption attacks. It detects bursts of
 file rewrites, encryption-style extension replacements, possible ransom-note
 filenames, mass deletion, and modification of a harmless local canary.
 
-Monitoring is local, bounded to 25,000 files, and runs on each scheduled scan
-while RATtler is running, including when its window is closed. RATtler does not
-read or upload protected-file contents. This
-release detects and explains suspicious changes. Kernel-mediated write blocking
-still requires Apple's restricted Endpoint Security entitlement.
+Monitoring is local and bounded to 25,000 files. A native FSEvents stream now
+triggers snapshots within seconds of protected-folder activity while RATtler is
+running, including when its window is closed. Events are coalesced and scans are
+rate-limited; the 60-second scheduler remains a fallback. RATtler does not read
+or upload protected-file contents, and its path-free stream-health record lets
+BluePulse expose stale, stopped, or dropped coverage.
+
+FSEvents starts detection; it does not identify the responsible process or
+block writes. Kernel-mediated attribution and authorization still require
+Apple's restricted Endpoint Security entitlement. See the
+[live file-event guide](docs/LIVE_FILE_EVENTS.md) for the exact timing, loss
+reconciliation, privacy boundary, and limitations.
 
 ### Recovery Vault
 
@@ -202,6 +209,8 @@ Risk detected:
 - Executable code running from randomized App Translocation paths
 - Ransomware-style bulk rewrites, extension churn, ransom notes, mass deletion,
   and local canary damage
+- Near-real-time FSEvents triggers for Desktop, Documents, and Pictures, with
+  burst coalescing, scan rate limiting, and BluePulse loss reconciliation
 - Opt-in, quota-limited, content-addressed recovery copies with automatic freeze
   on ransomware evidence
 - BluePulse sensor confidence, scan freshness, state permissions, and event loss
@@ -254,6 +263,8 @@ of the future signed system-extension milestone.
   it is bounded, stays local, and does not follow symbolic links.
 - Ransomware monitoring records file paths, size, modification time, and inode
   locally; it does not inspect protected-file contents.
+- The native FSEvents health record stores aggregate counters and continuity
+  state without file paths; paths are used only transiently to schedule scans.
 - Recovery Vault reads eligible document and photo contents only after explicit
   opt-in and stores them locally under Application Support.
 - BluePulse is tamper-evident within the app’s current permissions; it is not a

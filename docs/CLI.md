@@ -94,8 +94,9 @@ Every scan includes a `bluepulse` sensor result. It reports high, reduced, or
 low confidence in the sensors available to that scan. Threat findings and
 confidence remain separate: high confidence does not mean the endpoint is clean.
 
-With `--state`, `--journal`, `--baseline`, `--native-events`, or
-`--operation-state`, BluePulse also checks the corresponding local artifacts.
+With `--state`, `--journal`, `--baseline`, `--native-events`,
+`--operation-state`, or `--fsevents-state`, BluePulse also checks the
+corresponding local artifacts.
 Private state must remain owned by the current user and inaccessible to group or
 other users. A native event stream may be readable by a dedicated group, but it
 must not be group- or world-writable.
@@ -109,6 +110,11 @@ rattler --operation-state "$HOME/Library/Application Support/RATtler/operation-s
 The bounded assurance sensor validates schema, permissions, ownership,
 heartbeat freshness, scheduling interval, pause state, and whether the native
 host PID is still alive. It is read-only and does not start or control the app.
+
+The macOS app also supplies `--fsevents-state` automatically. Its path-free
+health record validates the protected-folder stream, watched-root count,
+aggregate triggers, heartbeat, host PID, and unreconciled event loss. The CLI
+does not create an FSEvents stream itself; the native app owns that lifecycle.
 
 Native collection is considered stale after 45 seconds without a heartbeat or
 event. The collector emits a heartbeat every 15 seconds. Heartbeats are consumed
@@ -133,8 +139,10 @@ contents of protected files. A small canary beside the private state file
 detects tampering, and BluePulse checks both artifacts' permissions.
 
 Rules report canary damage, repeated encryption-style extensions, bulk rewrites,
-possible ransom-note names, and mass deletion. This sensor is scan-based while
-RATtler is open, not real-time write prevention; opt-in recovery is separate.
+possible ransom-note names, and mass deletion. In the native app, FSEvents
+triggers this snapshot within seconds, with burst coalescing and a ten-second
+scan rate limit. The CLI example above remains interval-based. Neither mode is
+real-time write prevention; opt-in recovery is separate.
 
 ## Recovery Vault
 

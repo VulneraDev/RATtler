@@ -97,6 +97,25 @@ class BluePulseTests(unittest.TestCase):
         self.assertEqual(pulse.details["monitoring_mode"], "continuous local scheduling")
         self.assertEqual(pulse.details["continuous_operation"], "healthy")
 
+    def test_file_event_state_is_assurance_artifact_and_loss_is_visible(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "fsevents-state.json"
+            state.write_text(json.dumps({"schema": 1}), encoding="utf-8")
+            if os.name != "nt":
+                state.chmod(0o600)
+            sensors = SENSORS + [Check(
+                "native_file_events", Status.DEGRADED,
+                "file-event loss requires snapshot reconciliation",
+                {"dropped_events_total": 2},
+            )]
+            pulse = evaluate_bluepulse(
+                PROTECTION, sensors, [], file_event_state_path=state,
+            )
+        self.assertEqual(pulse.status, Status.DEGRADED)
+        self.assertEqual(pulse.details["native_file_events"], "degraded")
+        self.assertEqual(pulse.details["file_event_loss"], 2)
+        self.assertEqual(pulse.details["artifacts_checked"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -40,7 +40,8 @@
         }
       },
       {"name": "continuous_operation", "status": "healthy", "message": "native scan scheduler is active", "details": {"operation_status": "active", "interval_seconds": 60, "heartbeat_age_seconds": 2.4, "host_process_alive": true, "menu_bar": true, "launch_at_login": true, "last_scan_at": "2026-09-14T13:31:10Z"}},
-      {"name": "bluepulse", "status": "healthy", "message": "available sensor coverage verified", "details": {"confidence": "high", "operational": 4, "monitored": 4, "coverage_gaps": [], "monitoring_mode": "continuous local scheduling", "continuous_operation": "healthy", "operation_status": "active"}}
+      {"name": "native_file_events", "status": "healthy", "message": "near-real-time protected-folder triggers are active", "details": {"stream_active": true, "host_process_alive": true, "roots_watched": 3, "latency_seconds": 1.0, "events_seen": 88, "triggered_scans": 12, "dropped_events_total": 0, "unreconciled_drop": false, "last_event_id": 99108, "last_event_at": "2026-09-14T13:31:10Z", "path_data_retained": false}},
+      {"name": "bluepulse", "status": "healthy", "message": "available sensor coverage verified", "details": {"confidence": "high", "operational": 5, "monitored": 5, "coverage_gaps": [], "monitoring_mode": "continuous local scheduling", "continuous_operation": "healthy", "operation_status": "active", "native_file_events": "healthy", "file_event_loss": 0}}
     ],
     "findings": [],
     "events": []

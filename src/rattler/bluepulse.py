@@ -64,6 +64,7 @@ def evaluate_bluepulse(
     ransomware_state_path: Optional[Path] = None,
     recovery_store_path: Optional[Path] = None,
     operation_state_path: Optional[Path] = None,
+    file_event_state_path: Optional[Path] = None,
 ) -> Check:
     """Return an explainable confidence check for the current scan."""
     checks = [
@@ -95,6 +96,8 @@ def evaluate_bluepulse(
         artifacts.append(("recovery manifest", recovery_store_path / "manifest.json", True, False))
     if operation_state_path is not None:
         artifacts.append(("operation heartbeat", operation_state_path, True, False))
+    if file_event_state_path is not None:
+        artifacts.append(("native file-event state", file_event_state_path, True, False))
 
     artifact_issues = []
     artifacts_checked = 0
@@ -139,6 +142,7 @@ def evaluate_bluepulse(
     baseline = sensor_by_name.get("baseline")
     events = sensor_by_name.get("events")
     operation = sensor_by_name.get("continuous_operation")
+    file_events = sensor_by_name.get("native_file_events")
     operation_status = operation.details.get("operation_status") if operation else None
     return Check(
         "bluepulse",
@@ -156,6 +160,8 @@ def evaluate_bluepulse(
             "event_continuity": events.status.value if events else "not configured",
             "continuous_operation": operation.status.value if operation else "not configured",
             "operation_status": operation_status or "not configured",
+            "native_file_events": file_events.status.value if file_events else "not configured",
+            "file_event_loss": file_events.details.get("dropped_events_total", 0) if file_events else 0,
             "native_telemetry": native.status.value if native else "not configured",
             "native_dropped_events": dropped_events,
             "integrity_baseline": baseline.status.value if baseline else "not configured",

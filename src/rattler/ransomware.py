@@ -1,7 +1,7 @@
 """Read-only ransomware behavior detection using bounded filesystem snapshots.
 
 The sensor records file metadata, not file contents. It looks for changes that
-commonly accompany ransomware while RATtler is open: bulk rewrites, rapid
+commonly accompany ransomware while RATtler is running: bulk rewrites, rapid
 extension replacement, ransom-note creation, mass deletion, and damage to a
 local canary. It reports evidence but never blocks or modifies user files.
 """
@@ -312,7 +312,7 @@ def scan_ransomware(
             "access_errors": access_errors,
             "limited": limited,
             "max_files": max_files,
-            "detection_mode": "change snapshots while RATtler is open",
+            "detection_mode": "FSEvents-triggered snapshots while RATtler is running",
         }
         return Check("ransomware", sensor_status, message, details), findings, events
     except (OSError, ValueError, TypeError, json.JSONDecodeError) as error:

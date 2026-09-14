@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const state = { report: null, fileScan: null, detectionLab: null, quarantine: [], exceptions: [], capabilities: { baseline: false, nativeEvents: false, yaraRules: false, detectionLab: false, recovery: false, recoveryFrozen: false, recoveryError: false, installed: true, appPath: "", monitoringPaused: false, backgroundInterval: 60, menuBar: true, launchAtLogin: false, launchAtLoginStatus: "not registered", notificationsEnabled: false, version: "0.16.0" }, phase: "starting" };
+  const state = { report: null, fileScan: null, detectionLab: null, quarantine: [], exceptions: [], capabilities: { baseline: false, nativeEvents: false, fileEvents: false, fileEventRoots: 0, yaraRules: false, detectionLab: false, recovery: false, recoveryFrozen: false, recoveryError: false, installed: true, appPath: "", monitoringPaused: false, backgroundInterval: 60, menuBar: true, launchAtLogin: false, launchAtLoginStatus: "not registered", notificationsEnabled: false, version: "0.17.0" }, phase: "starting" };
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const esc = value => String(value ?? "—").replace(/[&<>'"]/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[char]));
@@ -25,6 +25,7 @@
   const findingRow = finding => `<div class="finding-row ${esc(finding.severity)}"><div class="finding-main"><strong>${esc(finding.title)}</strong><p>${esc(finding.message)}</p><span class="meta">${esc(finding.rule_id)} &nbsp;•&nbsp; ${esc(title(finding.category))}</span></div>${badge(finding.severity)}</div>`;
   const pulseCheck = behavior => (behavior?.sensors || []).find(item => item.name === "bluepulse");
   const ransomwareCheck = behavior => (behavior?.sensors || []).find(item => item.name === "ransomware");
+  const fileEventCheck = behavior => (behavior?.sensors || []).find(item => item.name === "native_file_events");
   const persistenceCheck = behavior => (behavior?.sensors || []).find(item => item.name === "persistence_atlas");
   const operationCheck = behavior => (behavior?.sensors || []).find(item => item.name === "continuous_operation");
   const scanFreshness = report => {
@@ -163,11 +164,12 @@
     if (!state.report) { $("#ransomware-content").innerHTML = empty("▣","No file-defense report yet","Run a scan to initialize protected-folder monitoring."); return; }
     const behavior = state.report.behavior || {};
     const sensor = ransomwareCheck(behavior) || {status:"unknown",message:"Ransomware sensor unavailable",details:{}};
+    const fileEvents = fileEventCheck(behavior) || {status:"unknown",message:"Protected-folder event trigger unavailable",details:{}};
     const recoverySensor = (behavior.sensors || []).find(item => item.name === "recovery_vault");
     const details = sensor.details || {};
     const findings = (behavior.findings || []).filter(item => item.category === "ransomware").sort((a,b) => severityRank(b.severity)-severityRank(a.severity));
     const severe = findings.some(item => ["critical","high"].includes(item.severity));
-    const warning = findings.length > 0 || sensor.status !== "healthy";
+    const warning = findings.length > 0 || sensor.status !== "healthy" || fileEvents.status !== "healthy";
     const heroStatus = severe ? "unhealthy" : warning ? "degraded" : "healthy";
     const initialized = details.initialized === true;
     const headline = severe ? "Encryption-like activity needs review" : warning ? "File defense needs attention" : initialized ? "No encryption pattern detected" : "Protected-folder baseline is ready";
@@ -176,6 +178,7 @@
     const folders = Array.isArray(details.protected_folders) ? details.protected_folders : [];
     const canary = details.canary || "unknown";
     const signals = [
+      {name:"live_event_trigger",status:fileEvents.status,message:fileEvents.status==="healthy"?`${Number(fileEvents.details?.roots_watched||0)} protected folders trigger a bounded snapshot within seconds.`:fileEvents.message},
       {name:"canary_integrity",status:canary==="healthy"?"healthy":"unhealthy",message:canary==="healthy"?"The local ransomware decoy is intact.":`The local canary is ${canary}.`},
       {name:"rewrite_velocity",status:Number(details.modified_files||0)>=40?"degraded":"healthy",message:`${Number(details.modified_files||0)} protected files were rewritten since the previous scan.`},
       {name:"extension_churn",status:Number(details.extension_replacements||0)||Number(details.encrypted_names||0)>=5?"unhealthy":"healthy",message:`${Number(details.extension_replacements||0)} encryption-style replacements and ${Number(details.encrypted_names||0)} suspicious names.`},
@@ -190,7 +193,7 @@
     const recoveryCopy = !recoveryEnabled ? "Opt in to keep quota-limited, versioned copies of common documents and photos entirely on this Mac." : recoveryFrozen ? "RATtler stopped adding versions after ransomware evidence so known-good copies are not aged out." : recoveryError ? "The latest automatic backup failed. Open the vault and run another scan after checking free space and folder access." : `${Number(recoveryDetails.recoverable_files||0).toLocaleString()} files have protected versions. Backups refresh automatically while RATtler is open.`;
     const recoveryActions = !recoveryEnabled ? `<button id="enable-recovery-button" class="quiet-button primary">Enable vault</button>` : `${severe||recoveryFrozen?`<button id="recover-files-button" class="quiet-button primary">Recover copies</button>`:""}<button id="reveal-recovery-button" class="quiet-button">Open vault</button>${recoveryFrozen?`<button id="resume-recovery-button" class="quiet-button warning">Resume backups</button>`:""}`;
     $("#ransomware-content").innerHTML = `
-      <article class="panel ransom-hero ${esc(heroStatus)}"><div class="ransom-emblem">${icon("lock")}<i></i></div><div class="ransom-copy"><div class="status-kicker">${severe?"ACTION REQUIRED":warning?"REVIEW COVERAGE":"MONITORING"}</div><h2>${esc(headline)}</h2><p>${esc(copy)}</p><small>Detection observes changes while RATtler is open. Automatic write blocking is not enabled.</small></div><div class="ransom-sweep"><i></i></div></article>
+      <article class="panel ransom-hero ${esc(heroStatus)}"><div class="ransom-emblem">${icon("lock")}<i></i></div><div class="ransom-copy"><div class="status-kicker">${severe?"ACTION REQUIRED":warning?"REVIEW COVERAGE":"MONITORING"}</div><h2>${esc(headline)}</h2><p>${esc(copy)}</p><small>FSEvents trigger snapshots within seconds while RATtler is running. Automatic write blocking is not enabled.</small></div><div class="ransom-sweep"><i></i></div></article>
       <div class="metrics ransom-metrics">
         ${metric(Number(details.monitored_files||0).toLocaleString(),"Files watched",folders.length?folders.join(", "):"Folder access needed","folder",sensor.status==="unknown"?"warning":"")}
         ${metric(changed,"Recent changes","Created, modified, or deleted","refresh",changed?"info":"")}
@@ -198,7 +201,7 @@
         ${metric(findings.length,"Indicators",findings.length?"Review evidence":"No active pattern","alert",findings.length?"danger":"")}
       </div>
       <div class="ransom-layout">
-        <article class="panel card-block"><div class="card-title"><div><h3>Ransomware signals</h3><p>Independent evidence checked on each scan</p></div><span>${esc(details.detection_mode||"snapshot monitoring")}</span></div>${signals.map(checkRow).join("")}</article>
+        <article class="panel card-block"><div class="card-title"><div><h3>Ransomware signals</h3><p>Independent evidence checked on each triggered scan</p></div><span>${fileEvents.status==="healthy"?"FSEvents + snapshots":esc(details.detection_mode||"snapshot monitoring")}</span></div>${signals.map(checkRow).join("")}</article>
         <article class="panel card-block"><div class="card-title"><div><h3>Protected folders</h3><p>Metadata only—RATtler does not upload file contents</p></div></div><div class="folder-pills">${folders.length?folders.map(folder=>`<span>${icon("folder")}${esc(folder)}</span>`).join(""):`<p>Desktop, Documents, and Pictures could not be read. Review macOS folder permissions.</p>`}</div><div class="ransom-limit"><strong>${details.limited?"PARTIAL COVERAGE":"BOUNDED COVERAGE"}</strong><span>Up to ${Number(details.max_files||0).toLocaleString()} files per scan</span></div></article>
       </div>
       <article class="panel recovery-card ${recoveryFrozen||recoveryError?"frozen":recoveryEnabled?"active":""}"><span class="recovery-symbol">${icon("shield")}</span><div><div class="status-kicker">${!recoveryEnabled?"OPT-IN RECOVERY":recoveryFrozen?"VAULT FROZEN":recoveryError?"BACKUP ERROR":"VERSIONED LOCALLY"}</div><h3>${esc(recoveryHeadline)}</h3><p>${esc(recoveryCopy)}</p><small>512 MB quota · common documents and photos · recovery never overwrites originals</small></div><div class="recovery-actions">${recoveryActions}</div></article>
@@ -248,6 +251,7 @@
     const installed = state.capabilities.installed !== false;
     const paused = state.capabilities.monitoringPaused === true;
     const operation = operationCheck(behavior);
+    const fileEvents = fileEventCheck(behavior);
     const decisiveStatus = ["unhealthy","unknown"].includes(pulse.status);
     const effectiveStatus = decisiveStatus ? pulse.status : paused || !freshness.fresh || !installed ? "degraded" : pulse.status;
     const confidence = decisiveStatus ? details.confidence || "low" : paused || !freshness.fresh || !installed ? "reduced" : details.confidence || "low";
@@ -263,6 +267,7 @@
       {name:"scan_freshness",status:freshness.fresh?"healthy":"degraded",message:freshness.fresh?"The current report is recent.":"The current report is older than 2½ minutes."},
       {name:"app_placement",status:installed?"healthy":"degraded",message:installed?"RATtler is running from Applications.":"Move RATtler into Applications and reopen it."},
       {name:"background_monitoring",status:operationStatus,message:paused?"Continuous monitoring is explicitly paused; manual scans still work.":operation?.message || "The native menu-bar scheduler is active."},
+      {name:"file_event_continuity",status:fileEvents?.status||"unknown",message:fileEvents?.status==="healthy"?`${Number(fileEvents.details?.roots_watched||0)} protected folders have a live FSEvents trigger.`:fileEvents?.message||"Protected-folder event continuity could not be verified."},
       {name:"event_continuity",status:["healthy","not configured"].includes(eventState)?"healthy":eventState,message:eventState==="not configured"?"One-time snapshot mode; continuous event state is not enabled.":`Continuous event state is ${eventState}.`},
       {name:"local_state_protection",status:artifactIssues.length?"degraded":"healthy",message:artifactIssues.length?`${artifactIssues.length} local monitoring artifact needs review.`:`${Number(details.artifacts_checked || 0)} local monitoring artifacts passed permission checks.`},
       {name:"native_event_loss",status:nativeState==="not configured"?"healthy":dropped?"degraded":nativeState,message:nativeState==="not configured"?"Native telemetry is optional and not provisioned.":dropped?`${dropped} native events were dropped.`:"No native event loss was reported."}
@@ -301,6 +306,10 @@
     const paused = state.capabilities.monitoringPaused === true;
     $("#monitoring-description").textContent = paused ? "Scheduled scans are paused. The menu-bar controller remains available and manual scans still work." : `The native scheduler checks this Mac every ${Number(state.capabilities.backgroundInterval || 60)} seconds, even when the window is closed.`;
     $("#monitoring-button").textContent = paused ? "Resume" : "Pause";
+    const fileEventsActive = state.capabilities.fileEvents === true && Number(state.capabilities.fileEventRoots || 0) > 0;
+    $("#file-event-description").textContent = fileEventsActive ? `${Number(state.capabilities.fileEventRoots)} protected folders trigger ransomware snapshots within seconds.` : "The protected-folder event stream is unavailable; scheduled scans still run.";
+    $("#file-event-state").textContent = fileEventsActive ? "LIVE" : "CHECK";
+    $("#file-event-state").classList.toggle("warning", !fileEventsActive);
     $("#login-switch").checked = state.capabilities.launchAtLogin === true;
     $("#login-description").textContent = state.capabilities.launchAtLoginStatus === "approval required" ? "Approval is required in System Settings → General → Login Items." : state.capabilities.launchAtLogin ? "RATtler will start after you sign in." : "Keep protection available after you sign in.";
     $("#notification-switch").checked = state.capabilities.notificationsEnabled === true;

@@ -204,6 +204,27 @@ Signed update metadata and rollback-safe in-app updates remain gated on a
 Developer ID, hardened runtime, and notarization. The current update path is a
 manual replacement from GitHub Releases and is described as such.
 
+## 0.17 — Near-real-time protected-folder triggers
+
+Status: implemented.
+
+- Watch Desktop, Documents, and Pictures through native macOS FSEvents while
+  RATtler is running.
+- Coalesce ordinary bursts for two seconds and rate-limit triggered ransomware
+  scans to one every ten seconds.
+- Start a faster snapshot for encryption-style names, common ransom-note names,
+  and FSEvents continuity-loss flags without treating a filename as a verdict.
+- Reconcile user-space drops, kernel drops, event-ID wrap, and watched-root
+  changes through a full bounded snapshot.
+- Persist a private, path-free stream heartbeat and expose stopped, stale,
+  unsafe, or unreconciled coverage through BluePulse.
+- Keep the 60-second native scheduler as a fallback and make pause/resume govern
+  both scheduled and event-triggered scans.
+
+FSEvents cannot attribute a change to its responsible process or block a write.
+Those capabilities remain gated on the Endpoint Security entitlement and signed
+system-extension milestones below.
+
 ## 1.0 — Signed system extension and tamper evidence
 
 Status: planned after prevention validation.
