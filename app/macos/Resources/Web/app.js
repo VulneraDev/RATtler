@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const state = { report: null, quarantine: [], capabilities: { baseline: false, nativeEvents: false, recovery: false, recoveryFrozen: false, recoveryError: false, installed: true, appPath: "", version: "0.11.0" }, phase: "starting", autoTimer: null };
+  const state = { report: null, quarantine: [], exceptions: [], capabilities: { baseline: false, nativeEvents: false, recovery: false, recoveryFrozen: false, recoveryError: false, installed: true, appPath: "", version: "0.12.0" }, phase: "starting", autoTimer: null };
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const esc = value => String(value ?? "—").replace(/[&<>'"]/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[char]));
@@ -80,11 +80,20 @@
     if (!findings.length) { $("#findings-list").innerHTML = empty("✓","Nothing matches this view",(state.report.behavior?.findings || []).length ? "Adjust the filter or search query." : "No current finding crossed RATtler’s alert threshold."); return; }
     $("#findings-list").innerHTML = findings.map((finding,index) => {
       const candidate = responseCandidate(finding);
-      const response = candidate ? `<div class="response-action"><span>Manual response only</span><button class="quarantine-button" data-path="${esc(candidate)}" data-rule="${esc(finding.rule_id)}">Review quarantine</button></div>` : "";
+      const exception = exceptionCandidate(finding);
+      const actions = [
+        exception ? `<button class="exception-button" data-exception-index="${index}">Ignore 30 days</button>` : "",
+        candidate ? `<button class="quarantine-button" data-path="${esc(candidate)}" data-rule="${esc(finding.rule_id)}">Review quarantine</button>` : ""
+      ].join("");
+      const response = actions ? `<div class="response-action"><span>Reviewed actions</span>${actions}</div>` : "";
       return `<article class="panel finding-card" data-index="${index}">${findingRow(finding)}${response}${evidence(finding.evidence)}</article>`;
     }).join("");
     $$(".finding-card", $("#findings-list")).forEach(card => card.addEventListener("click", event => { if (!event.target.closest("button")) card.classList.toggle("expanded"); }));
     $$(".quarantine-button", $("#findings-list")).forEach(button => button.addEventListener("click", () => native("quarantine", { path: button.dataset.path, ruleId: button.dataset.rule })));
+    $$(".exception-button", $("#findings-list")).forEach(button => button.addEventListener("click", () => {
+      const candidate = exceptionCandidate(findings[Number(button.dataset.exceptionIndex)]);
+      if (candidate) native("addException", { exception:candidate });
+    }));
   }
   const responseCandidate = finding => {
     const values = finding?.evidence || {};
@@ -93,6 +102,17 @@
       if (typeof value === "string" && value.startsWith("/") && !value.endsWith(" (deleted)")) return value;
     }
     return null;
+  };
+  const exceptionCandidate = finding => {
+    const values = finding?.evidence || {}, path = responseCandidate(finding);
+    if (!path) return null;
+    const first = keys => keys.map(key => values[key]).find(value => typeof value === "string" && value.length);
+    const cdhash = first(["cdhash","current_cdhash","module_cdhash","actor_cdhash","target_cdhash"]);
+    const sha256 = first(["sha256","current_sha256"]);
+    const teamId = first(["team_id","module_team_id","actor_team_id","target_team_id"]);
+    const identifier = first(["identifier","module_identifier","actor_identifier","target_identifier"]);
+    if (!cdhash && !sha256 && !(teamId && identifier)) return null;
+    return { ruleId:finding.rule_id, path, cdhash, sha256, teamId, identifier };
   };
   function renderRansomware() {
     if (!state.report) { $("#ransomware-content").innerHTML = empty("▣","No file-defense report yet","Run a scan to initialize protected-folder monitoring."); return; }
@@ -201,6 +221,13 @@
     const active = state.quarantine.filter(entry => entry.status === "quarantined");
     $("#quarantine-list").innerHTML = active.length ? active.map(entry => `<div class="quarantine-entry"><div><strong title="${esc(entry.original_path)}">${esc(entry.original_path)}</strong><small>${esc(String(entry.sha256 || "").slice(0,16))}… · ${esc(entry.id)}</small></div><button class="quiet-button restore-button" data-id="${esc(entry.id)}">Review restore</button></div>`).join("") : `<span>No quarantined files are awaiting restore.</span>`;
     $$(".restore-button", $("#quarantine-list")).forEach(button => button.addEventListener("click", () => native("restore", { id: button.dataset.id })));
+    const now = Date.now(), activeExceptions = state.exceptions.filter(entry => Date.parse(entry.expires_at) > now);
+    $("#exception-list").innerHTML = activeExceptions.length ? activeExceptions.map(entry => {
+      const identity = entry.match?.cdhash || entry.match?.sha256 || `${entry.match?.team_id || ""}/${entry.match?.identifier || ""}`;
+      const expiry = new Date(entry.expires_at).toLocaleDateString([], {dateStyle:"medium"});
+      return `<div class="quarantine-entry"><div><strong title="${esc(entry.match?.path)}">${esc(entry.rule_id)} · ${esc(entry.match?.path)}</strong><small>${esc(String(identity).slice(0,20))}${String(identity).length>20?"…":""} · expires ${esc(expiry)}</small></div><button class="quiet-button remove-exception-button" data-id="${esc(entry.id)}">Remove</button></div>`;
+    }).join("") : `<span>No active reviewed exceptions.</span>`;
+    $$(".remove-exception-button", $("#exception-list")).forEach(button => button.addEventListener("click", () => native("removeException", { id:button.dataset.id })));
   }
   function renderChrome() {
     const status = state.report?.status || "unknown";
@@ -215,10 +242,10 @@
     receiveReport(base64) { try { state.report=JSON.parse(decode(base64)); renderAll(); } catch(error) { showToast(`The report could not be displayed: ${error.message}`); } },
     receiveCapabilities(base64) { try { state.capabilities={...state.capabilities,...JSON.parse(decode(base64))}; renderAll(); } catch(_) {} },
     receiveState(base64) { try { const next=JSON.parse(decode(base64)); state.phase=next.phase; $("#activity-message").textContent=next.message; const scanning=next.phase==="scanning"; $("#scan-button").classList.toggle("scanning",scanning); $("#scan-button").disabled=scanning; if(next.phase==="error") showToast(next.message); } catch(_) {} },
-    receiveResponse(base64) { try { const result=JSON.parse(decode(base64)); if(Array.isArray(result.entries)) { state.quarantine=result.entries; renderSettings(); } if(result.message) showToast(result.message, Boolean(result.success)); } catch(_) {} }
+    receiveResponse(base64) { try { const result=JSON.parse(decode(base64)); if(Array.isArray(result.entries)) { state.quarantine=result.entries; renderSettings(); } if(Array.isArray(result.exceptions)) { state.exceptions=result.exceptions; renderSettings(); } if(result.message) showToast(result.message, Boolean(result.success)); } catch(_) {} }
   };
 
-  $$(".nav-item").forEach(button => button.addEventListener("click", () => { $$(".nav-item").forEach(item=>item.classList.remove("active")); button.classList.add("active"); $$(".view").forEach(view=>view.classList.remove("active")); $(`#${button.dataset.view}`).classList.add("active"); if(button.dataset.view==="settings") native("listQuarantine"); }));
+  $$(".nav-item").forEach(button => button.addEventListener("click", () => { $$(".nav-item").forEach(item=>item.classList.remove("active")); button.classList.add("active"); $$(".view").forEach(view=>view.classList.remove("active")); $(`#${button.dataset.view}`).classList.add("active"); if(button.dataset.view==="settings") { native("listQuarantine"); native("listExceptions"); } }));
   $("#scan-button").addEventListener("click",()=>native("scan")); $("#export-button").addEventListener("click",()=>native("export")); $("#reveal-button").addEventListener("click",()=>native("reveal")); $("#quarantine-folder-button").addEventListener("click",()=>native("revealQuarantine")); $("#quarantine-refresh-button").addEventListener("click",()=>native("listQuarantine"));
   $("#baseline-button").addEventListener("click",()=>{ if(confirm(`${state.capabilities.baseline ? "Replace" : "Create"} the integrity baseline?\n\nOnly continue after reviewing the current scan and trusting this Mac’s present state.`)) native("baseline"); });
   $("#severity-filter").addEventListener("change",renderFindings); $("#finding-search").addEventListener("input",renderFindings); $("#toast button").addEventListener("click",()=>$("#toast").classList.remove("visible"));

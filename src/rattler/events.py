@@ -13,7 +13,10 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from .baseline import _launchd_assets, fingerprint
-from .behavior import is_app_translocated, parse_processes, suspicious_location
+from .behavior import (
+    is_app_translocated, parse_processes, process_instance,
+    process_lineage, suspicious_location,
+)
 from .injection import (
     _plausible_code_path,
     _user_writable_location,
@@ -76,25 +79,35 @@ def parse_sockets(output: str) -> List[SocketInfo]:
 
 
 def _process_snapshot(excluded_pids: Optional[Iterable[int]] = None) -> Dict[str, Dict[str, object]]:
-    command = ["/bin/ps", "-axo", "pid=,ppid=,comm="] if platform.system() == "Darwin" else ["ps", "-axo", "pid=,ppid=,comm="]
+    command = ["/bin/ps", "-axo", "pid=,ppid=,lstart=,comm="] if platform.system() == "Darwin" else ["ps", "-axo", "pid=,ppid=,lstart=,comm="]
     result = run(command)
     if result is None or result.returncode != 0:
         return {}
     snapshot = {}
     exclusions = {os.getpid()}
     exclusions.update(excluded_pids or ())
-    for process in parse_processes(result.stdout):
+    processes = parse_processes(result.stdout)
+    inventory = {process.pid: process for process in processes}
+    for process in processes:
         if process.pid in exclusions or os.path.basename(process.executable) in IGNORED_PROCESS_NAMES:
             continue
+        lineage, lineage_status = process_lineage(process, inventory)
         snapshot[str(process.pid)] = {
             "ppid": process.ppid,
+            "started_at": process.started_at,
+            "process_instance": process_instance(process),
             "executable": process.executable,
             "risk_reason": suspicious_location(process.executable),
+            "ancestry": lineage,
+            "ancestry_status": lineage_status,
         }
     return snapshot
 
 
-def _socket_snapshot(excluded_pids: Optional[Iterable[int]] = None) -> Dict[str, Dict[str, object]]:
+def _socket_snapshot(
+    excluded_pids: Optional[Iterable[int]] = None,
+    processes: Optional[Dict[str, Dict[str, object]]] = None,
+) -> Dict[str, Dict[str, object]]:
     lsof = "/usr/sbin/lsof" if platform.system() == "Darwin" else "lsof"
     result = run([lsof, "-nP", "-FpcnT", "-iTCP"], timeout=15.0)
     if result is None or result.returncode not in (0, 1):
@@ -106,9 +119,12 @@ def _socket_snapshot(excluded_pids: Optional[Iterable[int]] = None) -> Dict[str,
         if item.pid in exclusions or item.state not in ("LISTEN", "ESTABLISHED"):
             continue
         key = "%s|%s|%s" % (item.pid, item.state, item.endpoint)
+        process = (processes or {}).get(str(item.pid), {})
         snapshot[key] = {
             "pid": item.pid, "process": item.process,
             "endpoint": item.endpoint, "state": item.state,
+            "process_instance": process.get("process_instance"),
+            "ancestry": process.get("ancestry", []),
         }
     return snapshot
 
@@ -139,7 +155,10 @@ def _persistence_snapshot() -> Dict[str, Dict[str, object]]:
     return snapshot
 
 
-def _image_snapshot(excluded_pids: Optional[Iterable[int]] = None) -> Dict[str, Dict[str, object]]:
+def _image_snapshot(
+    excluded_pids: Optional[Iterable[int]] = None,
+    processes: Optional[Dict[str, Dict[str, object]]] = None,
+) -> Dict[str, Dict[str, object]]:
     if platform.system() != "Darwin":
         return {}
     result = run(["/usr/sbin/lsof", "-nP", "-Fpcftn", "-d", "txt"], timeout=15.0)
@@ -171,6 +190,8 @@ def _image_snapshot(excluded_pids: Optional[Iterable[int]] = None) -> Dict[str, 
         snapshot[key] = {
             "pid": image.pid,
             "process": image.process,
+            "process_instance": (processes or {}).get(str(image.pid), {}).get("process_instance"),
+            "ancestry": (processes or {}).get(str(image.pid), {}).get("ancestry", []),
             "path": path,
             "cdhash": signature.cdhash,
             "signature": signature.kind,
@@ -183,11 +204,12 @@ def _image_snapshot(excluded_pids: Optional[Iterable[int]] = None) -> Dict[str, 
 
 def capture_snapshot(excluded_pids: Optional[Iterable[int]] = None) -> Dict[str, object]:
     exclusions = set(excluded_pids or ())
+    processes = _process_snapshot(exclusions)
     return {
-        "processes": _process_snapshot(exclusions),
-        "sockets": _socket_snapshot(exclusions),
+        "processes": processes,
+        "sockets": _socket_snapshot(exclusions, processes),
         "persistence": _persistence_snapshot(),
-        "images": _image_snapshot(exclusions),
+        "images": _image_snapshot(exclusions, processes),
     }
 
 
@@ -199,7 +221,12 @@ def diff_snapshots(old: Dict[str, object], new: Dict[str, object], observed_at: 
     events = []
     old_processes = old.get("processes", {}) if isinstance(old.get("processes"), dict) else {}
     for pid, process in new.get("processes", {}).items():
-        if old_processes.get(pid) == process:
+        previous = old_processes.get(pid)
+        if isinstance(previous, dict) and all(
+            previous.get(field) == process.get(field) for field in ("ppid", "executable")
+        ) and (
+            previous.get("started_at") in (None, process.get("started_at"))
+        ):
             continue
         evidence = {"pid": int(pid), **process}
         severity = Severity.MEDIUM if process.get("risk_reason") else Severity.INFO
@@ -244,6 +271,7 @@ def diff_snapshots(old: Dict[str, object], new: Dict[str, object], observed_at: 
         if identity_changed or trust_changed:
             evidence = {
                 **dict(image),
+                "rule_id": "RAT-INJECT-005",
                 "previous_cdhash": previous_cdhash,
                 "previous_signature": identity_source.get("signature"),
                 "previous_team_id": identity_source.get("team_id"),
@@ -261,12 +289,14 @@ def diff_snapshots(old: Dict[str, object], new: Dict[str, object], observed_at: 
 
 
 def correlate(events: List[Event], current_ids: set, observed_at: str) -> Tuple[List[Finding], List[Event]]:
-    by_pid: Dict[int, List[Event]] = {}
+    by_process: Dict[object, List[Event]] = {}
     persistence = []
     for event in events:
         pid = event.evidence.get("pid")
         if isinstance(pid, int):
-            by_pid.setdefault(pid, []).append(event)
+            instance = event.evidence.get("process_instance")
+            key = (pid, instance) if isinstance(instance, str) else pid
+            by_process.setdefault(key, []).append(event)
         if event.event_type in ("persistence_added", "persistence_changed"):
             persistence.append(event)
     findings = []
@@ -280,7 +310,8 @@ def correlate(events: List[Event], current_ids: set, observed_at: str) -> Tuple[
             "RAT-INJECT-005", "Loaded code identity changed at the same path", Severity.HIGH,
             "injection", "A mapped Mach-O path now reports a different CDHash or signing identity.", evidence,
         ))
-    for pid, items in by_pid.items():
+    for process_key, items in by_process.items():
+        pid = process_key[0] if isinstance(process_key, tuple) else process_key
         kinds = {item.event_type for item in items}
         relevant = any(item.event_id in current_ids for item in items)
         if not relevant:
@@ -291,7 +322,9 @@ def correlate(events: List[Event], current_ids: set, observed_at: str) -> Tuple[
         if risky_processes and connections:
             evidence = {
                 "pid": pid,
+                "process_instance": risky_processes[-1].evidence.get("process_instance"),
                 "executable": risky_processes[-1].evidence.get("executable"),
+                "ancestry": risky_processes[-1].evidence.get("ancestry", []),
                 "remote_endpoints": sorted({item.evidence.get("endpoint") for item in connections}),
                 "source_events": [item.event_id for item in risky_processes[-1:] + connections],
             }
@@ -303,6 +336,8 @@ def correlate(events: List[Event], current_ids: set, observed_at: str) -> Tuple[
         if images and connections:
             evidence = {
                 "pid": pid,
+                "process_instance": images[-1].evidence.get("process_instance"),
+                "ancestry": images[-1].evidence.get("ancestry", []),
                 "images": sorted({item.evidence.get("path") for item in images}),
                 "remote_endpoints": sorted({item.evidence.get("endpoint") for item in connections}),
                 "source_events": [item.event_id for item in images + connections],
@@ -318,7 +353,10 @@ def correlate(events: List[Event], current_ids: set, observed_at: str) -> Tuple[
             if not matching:
                 continue
             evidence = {
-                "pid": pid, "executable": executable,
+                "pid": pid,
+                "process_instance": process_event.evidence.get("process_instance"),
+                "ancestry": process_event.evidence.get("ancestry", []),
+                "executable": executable,
                 "persistence": [item.evidence.get("path") for item in matching],
                 "source_events": [process_event.event_id] + [item.event_id for item in matching],
             }

@@ -14,8 +14,8 @@ class MacOSAppSourceTests(unittest.TestCase):
         with (APP / "Info.plist").open("rb") as handle:
             info = plistlib.load(handle)
         self.assertEqual(info["CFBundleIdentifier"], "dev.vulnera.rattler")
-        self.assertEqual(info["CFBundleShortVersionString"], "0.11.0")
-        self.assertEqual(info["CFBundleVersion"], "13")
+        self.assertEqual(info["CFBundleShortVersionString"], "0.12.0")
+        self.assertEqual(info["CFBundleVersion"], "14")
         self.assertEqual(info["LSMinimumSystemVersion"], "13.0")
         self.assertTrue(info["LSMultipleInstancesProhibited"])
 
@@ -33,6 +33,8 @@ class MacOSAppSourceTests(unittest.TestCase):
         self.assertIn("Automatic write blocking is not enabled", script)
         self.assertIn("Recovery Vault is active", script)
         self.assertIn("never overwrites originals", script)
+        self.assertIn("Ignore 30 days", script)
+        self.assertIn("Path-only allowlisting is refused", html)
 
     def test_quarantine_requires_native_review_and_exact_hash(self):
         host = (APP / "Sources/main.m").read_text(encoding="utf-8")
@@ -59,6 +61,16 @@ class MacOSAppSourceTests(unittest.TestCase):
             self.assertIn('@"%s"' % folder, host)
         self.assertIn('storedAuto===null?true', script)
 
+    def test_app_applies_only_reviewed_identity_bound_exceptions(self):
+        host = (APP / "Sources/main.m").read_text(encoding="utf-8")
+        self.assertIn('@"--exceptions", exceptions.path', host)
+        self.assertIn('alert.messageText = @"Ignore this exact finding for 30 days?"', host)
+        self.assertIn('@"--cdhash", cdhash', host)
+        self.assertIn('@"--sha256", sha256', host)
+        self.assertIn('@"--team-id", teamID', host)
+        self.assertIn('@"--identifier", identifier', host)
+        self.assertIn('if (apply) [arguments addObject:@"--apply"]', host)
+
     def test_recovery_requires_native_consent_and_uses_a_new_destination(self):
         host = (APP / "Sources/main.m").read_text(encoding="utf-8")
         self.assertIn('alert.messageText = @"Enable the Recovery Vault?"', host)
@@ -72,8 +84,8 @@ class MacOSAppSourceTests(unittest.TestCase):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         build = (APP / "build.sh").read_text(encoding="utf-8")
         self.assertIn("Download **one ZIP**", readme)
-        self.assertIn("releases/download/v0.11.0/RATtler-macOS-Apple-Silicon.zip", readme)
-        self.assertIn("releases/download/v0.11.0/RATtler-macOS-Intel.zip", readme)
+        self.assertIn("releases/download/v0.12.0/RATtler-macOS-Apple-Silicon.zip", readme)
+        self.assertIn("releases/download/v0.12.0/RATtler-macOS-Intel.zip", readme)
         self.assertIn("System Settings → Privacy & Security", readme)
         self.assertIn("Open Anyway", readme)
         self.assertIn('release_architecture="Apple-Silicon"', build)

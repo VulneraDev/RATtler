@@ -111,6 +111,26 @@ Notarization authenticates distribution; it is intentionally not used as a
 substitute for runtime path, signature, identity-drift, or process-ancestry
 evidence.
 
+## 0.12 — Community hardening
+
+Status: implemented.
+
+- Add reviewed finding exceptions that require an exact rule, absolute path,
+  cryptographic code or file identity, operator reason, and expiry.
+- Refuse path-only exceptions and fail open without hiding findings when the
+  local policy is invalid.
+- Keep suppressed activity visible at informational severity and provide native
+  confirmation plus removal controls in the app.
+- Capture a bounded snapshot parent chain and start-time-derived process
+  identity for process, connection, and loaded-code events.
+- Correlate by process instance so ordinary PID reuse does not join unrelated
+  activity.
+- Pin CI actions and release packaging dependencies to reviewed revisions.
+
+These controls remain local to the current user. They improve tuning and
+snapshot evidence but do not claim root-owned policy protection or loss-aware
+real-time lineage; those remain gated on the signed system extension.
+
 ## 1.0 — Signed system extension and tamper evidence
 
 Status: planned after prevention validation.

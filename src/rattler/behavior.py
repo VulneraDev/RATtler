@@ -10,6 +10,7 @@ import platform
 import plistlib
 import posixpath
 import stat
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
@@ -23,6 +24,7 @@ class ProcessInfo:
     pid: int
     ppid: int
     executable: str
+    started_at: Optional[str] = None
 
 
 def is_app_translocated(path: str) -> bool:
@@ -83,43 +85,95 @@ def trusted_system_location(path: str) -> bool:
 def parse_processes(output: str) -> List[ProcessInfo]:
     processes = []
     for line in output.splitlines():
-        parts = line.strip().split(None, 2)
-        if len(parts) != 3:
+        parts = line.strip().split(None, 7)
+        if len(parts) < 3:
             continue
         try:
-            processes.append(ProcessInfo(int(parts[0]), int(parts[1]), parts[2]))
+            # `ps lstart` contributes five fixed fields before the executable.
+            if len(parts) == 8 and ":" in parts[5] and parts[6].isdigit():
+                processes.append(ProcessInfo(
+                    int(parts[0]), int(parts[1]), parts[7], " ".join(parts[2:7]),
+                ))
+            else:
+                compact = line.strip().split(None, 2)
+                processes.append(ProcessInfo(int(compact[0]), int(compact[1]), compact[2]))
         except ValueError:
             continue
     return processes
+
+
+def process_instance(process: ProcessInfo) -> str:
+    """Return a bounded identifier that distinguishes ordinary PID reuse."""
+    identity = "%s\0%s\0%s\0%s" % (
+        process.pid, process.ppid, process.started_at or "unknown", process.executable,
+    )
+    return hashlib.sha256(identity.encode("utf-8", errors="replace")).hexdigest()[:24]
+
+
+def process_lineage(
+    process: ProcessInfo,
+    processes: Dict[int, ProcessInfo],
+    max_depth: int = 8,
+) -> Tuple[List[Dict[str, object]], str]:
+    """Build a cycle-safe parent chain from the current process inventory."""
+    lineage = []
+    seen = {process.pid}
+    parent_pid = process.ppid
+    status = "complete"
+    while parent_pid > 0 and len(lineage) < max_depth:
+        if parent_pid in seen:
+            status = "cycle"
+            break
+        seen.add(parent_pid)
+        parent = processes.get(parent_pid)
+        if parent is None:
+            status = "parent_unavailable"
+            break
+        lineage.append({
+            "pid": parent.pid,
+            "executable": parent.executable,
+            "process_instance": process_instance(parent),
+        })
+        parent_pid = parent.ppid
+    if parent_pid > 0 and len(lineage) >= max_depth:
+        status = "truncated"
+    return lineage, status
 
 
 def process_sensor(
     home: Optional[str] = None,
     excluded_pids: Optional[Iterable[int]] = None,
 ) -> Tuple[Check, List[Finding], Dict[int, ProcessInfo]]:
-    command = ["/bin/ps", "-axo", "pid=,ppid=,comm="] if platform.system() == "Darwin" else ["ps", "-axo", "pid=,ppid=,comm="]
+    command = ["/bin/ps", "-axo", "pid=,ppid=,lstart=,comm="] if platform.system() == "Darwin" else ["ps", "-axo", "pid=,ppid=,lstart=,comm="]
     result = run(command)
     if result is None or result.returncode != 0:
         return Check("processes", Status.UNKNOWN, "process inventory unavailable"), [], {}
     exclusions = {os.getpid()}
     exclusions.update(excluded_pids or ())
     processes = [process for process in parse_processes(result.stdout) if process.pid not in exclusions]
+    inventory = {process.pid: process for process in processes}
     findings = []
     for process in processes:
         reason = suspicious_location(process.executable, home)
         if reason:
+            lineage, lineage_status = process_lineage(process, inventory)
             findings.append(Finding(
                 "RAT-PROC-001",
                 "Process launched from a risky location",
                 Severity.HIGH if "temporary" in reason or "deleted" in reason else Severity.MEDIUM,
                 "process",
                 "A running executable originates from a location frequently abused by droppers.",
-                {"pid": process.pid, "ppid": process.ppid, "executable": process.executable, "reason": reason},
+                {
+                    "pid": process.pid, "ppid": process.ppid,
+                    "process_instance": process_instance(process),
+                    "executable": process.executable, "reason": reason,
+                    "ancestry": lineage, "ancestry_status": lineage_status,
+                },
             ))
     return (
         Check("processes", Status.HEALTHY, "process inventory collected", {"count": len(processes)}),
         findings,
-        {process.pid: process for process in processes},
+        inventory,
     )
 
 

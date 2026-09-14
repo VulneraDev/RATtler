@@ -11,9 +11,14 @@
 @property(nonatomic, assign) BOOL scanning;
 - (NSString *)responseErrorFromResult:(NSDictionary *)result fallback:(NSString *)fallback;
 - (BOOL)isValidSHA256:(NSString *)digest;
+- (BOOL)isValidCDHash:(NSString *)digest;
 - (void)enableRecovery;
 - (void)recoverFiles;
 - (void)resumeRecovery;
+- (void)planFindingException:(NSDictionary *)exception;
+- (NSArray<NSString *> *)exceptionArgumentsForFinding:(NSDictionary *)exception apply:(BOOL)apply;
+- (void)listExceptions;
+- (void)planRemoveException:(NSString *)identifier;
 @end
 
 @implementation RATAppDelegate
@@ -126,6 +131,15 @@
     } else if ([action isEqualToString:@"restore"]) {
         NSString *identifier = ((NSDictionary *)message.body)[@"id"];
         [self planRestoreIdentifier:identifier];
+    } else if ([action isEqualToString:@"addException"]) {
+        NSDictionary *exception = [((NSDictionary *)message.body)[@"exception"] isKindOfClass:[NSDictionary class]]
+            ? ((NSDictionary *)message.body)[@"exception"] : nil;
+        [self planFindingException:exception];
+    } else if ([action isEqualToString:@"listExceptions"]) {
+        [self listExceptions];
+    } else if ([action isEqualToString:@"removeException"]) {
+        NSString *identifier = ((NSDictionary *)message.body)[@"id"];
+        [self planRemoveException:identifier];
     } else if ([action isEqualToString:@"enableRecovery"]) {
         [self enableRecovery];
     } else if ([action isEqualToString:@"recoverFiles"]) {
@@ -160,10 +174,12 @@
     NSURL *baseline = [directory URLByAppendingPathComponent:@"baseline.json"];
     NSURL *nativeEvents = [directory URLByAppendingPathComponent:@"native-events.jsonl"];
     NSURL *ransomwareState = [directory URLByAppendingPathComponent:@"ransomware-state.json"];
+    NSURL *exceptions = [directory URLByAppendingPathComponent:@"exceptions.json"];
     NSString *home = NSHomeDirectory();
     NSMutableArray<NSString *> *arguments = [NSMutableArray arrayWithArray:@[
         @"--state", state.path, @"--journal", journal.path,
         @"--ransomware-state", ransomwareState.path,
+        @"--exceptions", exceptions.path,
         @"--ransomware-root", [home stringByAppendingPathComponent:@"Desktop"],
         @"--ransomware-root", [home stringByAppendingPathComponent:@"Documents"],
         @"--ransomware-root", [home stringByAppendingPathComponent:@"Pictures"],
@@ -412,6 +428,12 @@
     return [digest rangeOfCharacterFromSet:allowed.invertedSet].location == NSNotFound;
 }
 
+- (BOOL)isValidCDHash:(NSString *)digest {
+    if (![digest isKindOfClass:[NSString class]] || (digest.length != 40 && digest.length != 64)) return NO;
+    NSCharacterSet *allowed = [NSCharacterSet characterSetWithCharactersInString:@"0123456789abcdef"];
+    return [digest.lowercaseString rangeOfCharacterFromSet:allowed.invertedSet].location == NSNotFound;
+}
+
 - (BOOL)isValidEntryIdentifier:(NSString *)identifier {
     if (![identifier isKindOfClass:[NSString class]] || identifier.length != 32) return NO;
     NSCharacterSet *allowed = [NSCharacterSet characterSetWithCharactersInString:@"0123456789abcdef"];
@@ -517,6 +539,145 @@
             });
         });
     });
+}
+
+- (NSArray<NSString *> *)exceptionArgumentsForFinding:(NSDictionary *)exception apply:(BOOL)apply {
+    NSString *ruleID = [exception[@"ruleId"] isKindOfClass:[NSString class]] ? exception[@"ruleId"] : nil;
+    NSString *path = [exception[@"path"] isKindOfClass:[NSString class]] ? exception[@"path"] : nil;
+    NSString *cdhash = [exception[@"cdhash"] isKindOfClass:[NSString class]] ? [exception[@"cdhash"] lowercaseString] : nil;
+    NSString *sha256 = [exception[@"sha256"] isKindOfClass:[NSString class]] ? [exception[@"sha256"] lowercaseString] : nil;
+    NSString *teamID = [exception[@"teamId"] isKindOfClass:[NSString class]] ? exception[@"teamId"] : nil;
+    NSString *identifier = [exception[@"identifier"] isKindOfClass:[NSString class]] ? exception[@"identifier"] : nil;
+    BOOL validRule = ruleID.length > 0 && ruleID.length <= 128;
+    BOOL validPath = path.isAbsolutePath && path.length <= 4096;
+    BOOL validHash = [self isValidCDHash:cdhash] || [self isValidSHA256:sha256];
+    BOOL validSigner = teamID.length > 0 && teamID.length <= 128 && identifier.length > 0 && identifier.length <= 512;
+    if (!validRule || !validPath || (!validHash && !validSigner)) return nil;
+    NSURL *policy = [[self applicationDataDirectory] URLByAppendingPathComponent:@"exceptions.json"];
+    NSMutableArray<NSString *> *arguments = [NSMutableArray arrayWithArray:@[
+        @"exceptions", @"--policy", policy.path, @"--pretty", @"add",
+        @"--rule-id", ruleID, @"--path", path,
+        @"--reason", @"Reviewed in the RATtler app", @"--days", @"30",
+    ]];
+    if ([self isValidCDHash:cdhash]) [arguments addObjectsFromArray:@[@"--cdhash", cdhash]];
+    if ([self isValidSHA256:sha256]) [arguments addObjectsFromArray:@[@"--sha256", sha256]];
+    if (teamID.length > 0 && teamID.length <= 128) [arguments addObjectsFromArray:@[@"--team-id", teamID]];
+    if (identifier.length > 0 && identifier.length <= 512) [arguments addObjectsFromArray:@[@"--identifier", identifier]];
+    if (apply) [arguments addObject:@"--apply"];
+    return arguments;
+}
+
+- (void)planFindingException:(NSDictionary *)exception {
+    if (self.scanning) return;
+    NSArray<NSString *> *planArguments = [self exceptionArgumentsForFinding:exception apply:NO];
+    if (planArguments == nil) {
+        [self sendObject:@{ @"phase": @"error", @"message": @"This finding lacks a safe code or file identity for an exception." }
+                function:@"receiveState"];
+        return;
+    }
+    self.scanning = YES;
+    [self sendObject:@{ @"phase": @"scanning", @"message": @"Validating a narrow reviewed exception…" }
+            function:@"receiveState"];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSDictionary *result = [self runEngineArguments:planArguments];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSData *output = result[@"output"];
+            NSDictionary *plan = output.length
+                ? [NSJSONSerialization JSONObjectWithData:output options:0 error:nil] : nil;
+            NSDictionary *entry = [plan[@"entry"] isKindOfClass:[NSDictionary class]] ? plan[@"entry"] : nil;
+            NSDictionary *match = [entry[@"match"] isKindOfClass:[NSDictionary class]] ? entry[@"match"] : nil;
+            NSString *path = [match[@"path"] isKindOfClass:[NSString class]] ? match[@"path"] : @"";
+            NSString *ruleID = [entry[@"rule_id"] isKindOfClass:[NSString class]] ? entry[@"rule_id"] : @"";
+            if ([result[@"status"] intValue] != 0 || !path.isAbsolutePath || ruleID.length == 0) {
+                self.scanning = NO;
+                NSString *detail = [self responseErrorFromResult:result fallback:@"The reviewed exception could not be validated."];
+                [self sendObject:@{ @"phase": @"error", @"message": detail } function:@"receiveState"];
+                return;
+            }
+            NSString *identity = match[@"cdhash"] ?: match[@"sha256"];
+            if (![identity isKindOfClass:[NSString class]]) {
+                identity = [NSString stringWithFormat:@"%@ / %@", match[@"team_id"] ?: @"", match[@"identifier"] ?: @""];
+            }
+            NSAlert *alert = [[NSAlert alloc] init];
+            alert.messageText = @"Ignore this exact finding for 30 days?";
+            alert.informativeText = [NSString stringWithFormat:
+                @"The exception applies only to this rule, path, and cryptographic identity. Activity remains in the local timeline, and the exception expires automatically.\n\nRule: %@\nPath: %@\nIdentity: %@",
+                ruleID, path, identity];
+            alert.alertStyle = NSAlertStyleWarning;
+            [alert addButtonWithTitle:@"Add Exception"];
+            [alert addButtonWithTitle:@"Cancel"];
+            if ([alert runModal] != NSAlertFirstButtonReturn) {
+                self.scanning = NO;
+                [self sendObject:@{ @"phase": @"ready", @"message": @"Exception cancelled" } function:@"receiveState"];
+                return;
+            }
+            NSArray<NSString *> *applyArguments = [self exceptionArgumentsForFinding:exception apply:YES];
+            dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+                NSDictionary *appliedResult = [self runEngineArguments:applyArguments];
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    self.scanning = NO;
+                    NSData *appliedOutput = appliedResult[@"output"];
+                    NSDictionary *applied = appliedOutput.length
+                        ? [NSJSONSerialization JSONObjectWithData:appliedOutput options:0 error:nil] : nil;
+                    if ([appliedResult[@"status"] intValue] == 0 && [applied[@"applied"] boolValue]) {
+                        [self sendObject:@{ @"success": @YES, @"message": @"Reviewed exception added for 30 days." }
+                                function:@"receiveResponse"];
+                        [self listExceptions];
+                        [self startScan];
+                    } else {
+                        NSString *detail = [self responseErrorFromResult:appliedResult fallback:@"The exception was not added."];
+                        [self sendObject:@{ @"phase": @"error", @"message": detail } function:@"receiveState"];
+                    }
+                });
+            });
+        });
+    });
+}
+
+- (void)listExceptions {
+    NSURL *policy = [[self applicationDataDirectory] URLByAppendingPathComponent:@"exceptions.json"];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        NSDictionary *result = [self runEngineArguments:@[
+            @"exceptions", @"--policy", policy.path, @"--pretty", @"list", @"--include-expired",
+        ]];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSData *output = result[@"output"];
+            NSDictionary *listing = output.length
+                ? [NSJSONSerialization JSONObjectWithData:output options:0 error:nil] : nil;
+            if ([result[@"status"] intValue] == 0 && [listing[@"entries"] isKindOfClass:[NSArray class]]) {
+                [self sendObject:@{ @"exceptions": listing[@"entries"] } function:@"receiveResponse"];
+            }
+        });
+    });
+}
+
+- (void)planRemoveException:(NSString *)identifier {
+    if (self.scanning || ![self isValidEntryIdentifier:identifier]) return;
+    NSURL *policy = [[self applicationDataDirectory] URLByAppendingPathComponent:@"exceptions.json"];
+    NSDictionary *result = [self runEngineArguments:@[
+        @"exceptions", @"--policy", policy.path, @"--pretty", @"remove", identifier,
+    ]];
+    NSData *output = result[@"output"];
+    NSDictionary *plan = output.length ? [NSJSONSerialization JSONObjectWithData:output options:0 error:nil] : nil;
+    NSDictionary *entry = [plan[@"entry"] isKindOfClass:[NSDictionary class]] ? plan[@"entry"] : nil;
+    if ([result[@"status"] intValue] != 0 || entry == nil) return;
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Remove this reviewed exception?";
+    alert.informativeText = [NSString stringWithFormat:@"Rule %@ will be evaluated normally on the next scan. No file or activity history will be deleted.", entry[@"rule_id"] ?: @"unknown"];
+    [alert addButtonWithTitle:@"Remove Exception"];
+    [alert addButtonWithTitle:@"Cancel"];
+    if ([alert runModal] != NSAlertFirstButtonReturn) return;
+    NSDictionary *appliedResult = [self runEngineArguments:@[
+        @"exceptions", @"--policy", policy.path, @"--pretty", @"remove", identifier, @"--apply",
+    ]];
+    NSData *appliedOutput = appliedResult[@"output"];
+    NSDictionary *applied = appliedOutput.length
+        ? [NSJSONSerialization JSONObjectWithData:appliedOutput options:0 error:nil] : nil;
+    if ([appliedResult[@"status"] intValue] == 0 && [applied[@"applied"] boolValue]) {
+        [self sendObject:@{ @"success": @YES, @"message": @"Reviewed exception removed." } function:@"receiveResponse"];
+        [self listExceptions];
+        [self startScan];
+    }
 }
 
 - (void)enableRecovery {
@@ -736,7 +897,7 @@
         @"recoveryError": @([[NSFileManager defaultManager] fileExistsAtPath:[self recoveryErrorURL].path]),
         @"installed": @(installed),
         @"appPath": appPath ?: @"",
-        @"version": @"0.11.0",
+        @"version": @"0.12.0",
     }
             function:@"receiveCapabilities"];
 }

@@ -15,6 +15,7 @@ from .native_bridge import ingest_native_events
 from .providers import select_provider
 from .ransomware import DEFAULT_MAX_FILES, scan_ransomware
 from .recovery import status as recovery_status
+from .suppressions import apply_exceptions
 
 
 EXIT_CODES = {
@@ -54,6 +55,10 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--recovery-store", metavar="PATH", help="report local recovery-vault health")
     parser.add_argument(
+        "--exceptions", metavar="PATH",
+        help="apply narrow, expiring finding exceptions from a local policy",
+    )
+    parser.add_argument(
         "--exclude-pid", metavar="PID", type=int, action="append", default=[],
         help="exclude one trusted host process PID (repeatable)",
     )
@@ -74,6 +79,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         from .recovery import main as recovery_main
 
         return recovery_main(raw_arguments[1:])
+    if raw_arguments and raw_arguments[0] == "exceptions":
+        from .suppressions import main as suppressions_main
+
+        return suppressions_main(raw_arguments[1:])
     args = _parser().parse_args(raw_arguments)
     if args.interval <= 0:
         _parser().error("--interval must be greater than zero")
@@ -166,6 +175,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     sensors=behavior.sensors + [recovery_check],
                     findings=behavior.findings,
                     events=behavior.events,
+                )
+            if args.exceptions:
+                exception_check, findings, events = apply_exceptions(
+                    Path(args.exceptions), behavior.findings, behavior.events,
+                )
+                behavior = BehaviorReport(
+                    sensors=behavior.sensors + [exception_check],
+                    findings=findings,
+                    events=events,
                 )
             protection = provider.report()
             bluepulse = evaluate_bluepulse(

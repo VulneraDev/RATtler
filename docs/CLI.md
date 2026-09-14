@@ -121,6 +121,38 @@ high-priority finding. The default correlation window is 15 minutes; change it
 with `--event-window`.
 The JSONL journal rotates at 10 MiB by default.
 
+Snapshot process events include a bounded parent chain and an instance identity
+derived from PID, parent PID, executable, and process start time. Correlation
+uses that identity so unrelated processes that reuse a PID are not joined. This
+is best-effort snapshot context; the entitlement-gated native collector remains
+the future source for loss-aware real-time ancestry.
+
+## Reviewed exceptions
+
+Create an exception as a dry run, then explicitly apply the reviewed plan:
+
+```sh
+rattler exceptions --policy ~/.rattler/exceptions.json --pretty add \
+  --rule-id RAT-INJECT-005 --path /absolute/path/plugin.dylib \
+  --cdhash <40-or-64-character-cdhash> --reason "Reviewed internal plugin"
+rattler exceptions --policy ~/.rattler/exceptions.json --pretty add \
+  --rule-id RAT-INJECT-005 --path /absolute/path/plugin.dylib \
+  --cdhash <40-or-64-character-cdhash> --reason "Reviewed internal plugin" --apply
+rattler --exceptions ~/.rattler/exceptions.json --pretty
+```
+
+An exception requires an exact rule and absolute path plus a CDHash, SHA-256,
+or Team ID and signing identifier. It must include a reason, lasts 30 days by
+default, and cannot exceed 90 days. Path-only exceptions are refused. Matching
+findings stop affecting risk status, while linked events remain in the activity
+timeline at informational severity.
+
+```sh
+rattler exceptions --policy ~/.rattler/exceptions.json --pretty list
+rattler exceptions --policy ~/.rattler/exceptions.json --pretty remove <entry-id>
+rattler exceptions --policy ~/.rattler/exceptions.json --pretty remove <entry-id> --apply
+```
+
 ## Quarantine and restore
 
 The first quarantine command is a dry run. Applying it requires the exact hash

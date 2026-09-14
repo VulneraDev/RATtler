@@ -12,6 +12,8 @@ from rattler.behavior import (
     _parse_lsof,
     inspect_launchd_file,
     parse_processes,
+    process_instance,
+    process_lineage,
     process_sensor,
     suspicious_location,
 )
@@ -37,6 +39,18 @@ class ProcessSensorTests(unittest.TestCase):
     def test_parses_process_inventory(self):
         result = parse_processes("  10 1 /usr/bin/safe\n20 10 /tmp/dropper\ninvalid")
         self.assertEqual(result[1], ProcessInfo(20, 10, "/tmp/dropper"))
+
+    def test_parses_start_time_and_builds_bounded_lineage(self):
+        result = parse_processes(
+            "1 0 Sun Sep 14 10:00:00 2026 /sbin/launchd\n"
+            "10 1 Sun Sep 14 10:01:00 2026 /Applications/Parent.app/Parent\n"
+            "20 10 Sun Sep 14 10:02:00 2026 /tmp/dropper\n"
+        )
+        inventory = {item.pid: item for item in result}
+        lineage, status = process_lineage(inventory[20], inventory)
+        self.assertEqual([item["pid"] for item in lineage], [10, 1])
+        self.assertEqual(status, "complete")
+        self.assertNotEqual(process_instance(inventory[10]), process_instance(inventory[20]))
 
     def test_detects_risky_location(self):
         self.assertEqual(suspicious_location("/tmp/dropper", "/Users/test"), "temporary directory")

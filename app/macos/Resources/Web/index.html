@@ -43,7 +43,7 @@
       </nav>
       <div class="sidebar-status">
         <span id="sidebar-dot" class="status-dot unknown"></span>
-        <div><strong id="sidebar-label">Awaiting scan</strong><small>Community Preview <span id="app-version">0.11.0</span></small></div>
+        <div><strong id="sidebar-label">Awaiting scan</strong><small>Community Preview <span id="app-version">0.12.0</span></small></div>
       </div>
     </aside>
 
@@ -111,6 +111,13 @@
               <div class="setting-row"><span class="setting-icon">▣</span><div><strong>Local evidence</strong><p>Reports, state, and the bounded event journal stay in Application Support.</p></div><button id="reveal-button" class="quiet-button">Show files</button></div>
               <div class="divider"></div>
               <div class="setting-row"><span class="setting-icon">⌁</span><div><strong>No cloud connection</strong><p>RATtler contains no telemetry upload or remote-control service.</p></div><span class="local-badge">LOCAL ONLY</span></div>
+            </article>
+            <article class="panel settings-panel">
+              <h3>Reviewed exceptions</h3>
+              <div class="setting-row"><span class="setting-icon">✓</span><div><strong>Narrow and temporary</strong><p>Exceptions require an exact rule, path, code or file identity, reason, and 30-day expiry. Path-only allowlisting is refused.</p></div><span class="local-badge">LOCAL ONLY</span></div>
+              <div class="divider"></div>
+              <div class="quarantine-heading"><div><strong>Active exceptions</strong><p>Activity stays in the timeline even when its reviewed finding is hidden.</p></div></div>
+              <div id="exception-list" class="quarantine-list"><span>Open Settings to load reviewed exceptions.</span></div>
             </article>
             <article class="panel settings-panel">
               <h3>Response</h3>

@@ -57,6 +57,17 @@ class EventDiffTests(unittest.TestCase):
         self.assertEqual(findings[0].rule_id, "RAT-CORR-001")
         self.assertEqual(derived[0].severity, Severity.CRITICAL)
 
+    def test_does_not_correlate_events_from_reused_pid(self):
+        process = Event("p", "process_started", Severity.MEDIUM, NOW, {
+            "pid": 10, "process_instance": "old-instance",
+            "executable": "/tmp/agent", "risk_reason": "temporary directory",
+        })
+        connection = Event("c", "connection_established", Severity.INFO, NOW, {
+            "pid": 10, "process_instance": "new-instance", "endpoint": "local->remote",
+        })
+        findings, derived = correlate([process, connection], {"c"}, NOW)
+        self.assertEqual((findings, derived), ([], []))
+
     def test_cdhash_change_at_same_loaded_path_is_high_priority(self):
         old = {
             "processes": {}, "sockets": {}, "persistence": {},
@@ -134,6 +145,20 @@ class EventStateTests(unittest.TestCase):
             ),
         )
         self.assertEqual(set(_process_snapshot({424242})), {"525252"})
+
+    @patch("rattler.events.run")
+    def test_process_snapshot_records_instance_and_ancestry(self, mocked_run):
+        mocked_run.return_value = SimpleNamespace(
+            returncode=0,
+            stdout=(
+                "1 0 Sun Sep 14 10:00:00 2026 /sbin/launchd\n"
+                "10 1 Sun Sep 14 10:01:00 2026 /Applications/Parent.app/Parent\n"
+                "20 10 Sun Sep 14 10:02:00 2026 /tmp/dropper\n"
+            ),
+        )
+        snapshot = _process_snapshot()
+        self.assertEqual([item["pid"] for item in snapshot["20"]["ancestry"]], [10, 1])
+        self.assertEqual(len(snapshot["20"]["process_instance"]), 24)
 
     @patch("rattler.events.capture_snapshot")
     def test_first_run_initializes_private_state_without_event_flood(self, mocked_capture):

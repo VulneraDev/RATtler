@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.12.0
+
+- Add reviewed, expiring finding exceptions bound to an exact rule, absolute
+  path, and cryptographic code or file identity
+- Refuse path-only exceptions, require a reason, cap validity at 90 days, and
+  fail open with degraded coverage when a policy is invalid
+- Keep linked endpoint activity visible at informational severity when its
+  reviewed finding is suppressed
+- Add native-app controls to create 30-day exceptions and remove them from
+  Settings after confirmation
+- Capture bounded process ancestry and start-time-derived process identities
+- Correlate process, network, and loaded-code events by process instance to
+  avoid joining unrelated processes after ordinary PID reuse
+- Pin CI actions and the macOS release packager to reviewed revisions
+
 ## 0.11.0
 
 - Record CDHash, signature kind, Team ID, and identifier for bounded

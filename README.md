@@ -11,8 +11,8 @@ the computer unless you export a report yourself.
 
 Download **one ZIP**—not both:
 
-- [Mac with an Apple chip](https://github.com/VulneraDev/RATtler/releases/download/v0.11.0/RATtler-macOS-Apple-Silicon.zip)
-- [Mac with an Intel processor](https://github.com/VulneraDev/RATtler/releases/download/v0.11.0/RATtler-macOS-Intel.zip)
+- [Mac with an Apple chip](https://github.com/VulneraDev/RATtler/releases/download/v0.12.0/RATtler-macOS-Apple-Silicon.zip)
+- [Mac with an Intel processor](https://github.com/VulneraDev/RATtler/releases/download/v0.12.0/RATtler-macOS-Intel.zip)
 
 Not sure which Mac you have? Open **Apple menu → About This Mac**:
 
@@ -111,6 +111,8 @@ Risk detected:
 - TCP services exposed on every network interface
 - Deleted or untrusted Mach-O code loaded into protected processes
 - Code-signing, Team ID, and CDHash identity changes
+- Snapshot process ancestry with start-time identities that resist ordinary PID
+  reuse during event correlation
 - Executable code running from randomized App Translocation paths
 - Ransomware-style bulk rewrites, extension churn, ransom notes, mass deletion,
   and local canary damage
@@ -132,6 +134,19 @@ is already running.
 
 Open **Settings → Response** to view or restore quarantined files. Restore checks
 the file again and never overwrites an existing destination.
+
+## Reviewed exceptions
+
+Eligible code-identity findings offer **Ignore 30 days** after you expand them.
+RATtler asks for native confirmation and binds the exception to the exact rule,
+absolute path, and either a CDHash, SHA-256, or Team ID plus signing identifier.
+Path-only allowlisting is refused, exceptions expire automatically, and matching
+activity remains visible in the local timeline. Manage active exceptions in
+**Settings → Reviewed exceptions**.
+
+Exception policy files are private to the current user, not tamper-proof against
+malware already running as that user. Root-owned policy enforcement remains part
+of the future signed system-extension milestone.
 
 ## Privacy and safety
 

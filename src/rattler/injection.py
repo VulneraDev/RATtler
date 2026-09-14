@@ -284,6 +284,8 @@ def analyze_loaded_images(
                 "host_cdhash": host_signature.cdhash,
                 "module_team_id": module_signature.team_id,
                 "host_team_id": host_signature.team_id,
+                "module_identifier": module_signature.identifier,
+                "host_identifier": host_signature.identifier,
                 "team_mismatch": mismatched_team,
                 "app_translocated": translocated,
             },
