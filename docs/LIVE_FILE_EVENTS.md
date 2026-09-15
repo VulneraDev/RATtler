@@ -15,6 +15,11 @@ scan.
    deleted, and renamed files and applies the ransomware rules.
 5. Any finding remains explainable in the Ransomware and Findings views.
 
+Detection runs before automatic Recovery Vault refresh work. A large vault can
+continue refreshing in the background without holding the file-event scan; a
+ransomware finding freezes the vault and aborts that refresh before it can
+replace the last complete manifest.
+
 FSEvents is the trigger, not the verdict. A normal change starts a scan but is
 not labeled malicious. The scanner still requires multiple defined signals
 before it reports ransomware-like activity.

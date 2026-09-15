@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.18.0
+
+- Add an interactive CSS 3D endpoint overview to the Dashboard with selectable
+  Platform Protection, Processes, Network, Persistence, Files, and BluePulse
+  layers backed by the current report
+- Add pointer perspective, keyboard selection, direct investigation links, and
+  reduced-motion behavior without introducing remote code or dependencies
+- Move automatic Recovery Vault refreshes after detection and run them outside
+  the scan path so large backups do not delay FSEvents-triggered scans
+- Add a freeze-marker abort contract that refuses to replace the last complete
+  recovery manifest when ransomware evidence appears during a refresh
+- Expose background vault-refresh state in the Ransomware view and track native
+  engine child tasks for clean shutdown
+- Validate detection during an active synthetic 220-file vault refresh: the
+  file event triggered and completed healthy while backup work was still active
+
 ## 0.17.0
 
 - Add a native file-level FSEvents stream for Desktop, Documents, and Pictures

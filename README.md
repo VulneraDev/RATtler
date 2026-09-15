@@ -11,8 +11,8 @@ the computer unless you export a report yourself.
 
 Download **one ZIP**—not both:
 
-- [Mac with an Apple chip](https://github.com/VulneraDev/RATtler/releases/download/v0.17.0/RATtler-macOS-Apple-Silicon.zip)
-- [Mac with an Intel processor](https://github.com/VulneraDev/RATtler/releases/download/v0.17.0/RATtler-macOS-Intel.zip)
+- [Mac with an Apple chip](https://github.com/VulneraDev/RATtler/releases/download/v0.18.0/RATtler-macOS-Apple-Silicon.zip)
+- [Mac with an Intel processor](https://github.com/VulneraDev/RATtler/releases/download/v0.18.0/RATtler-macOS-Intel.zip)
 
 Not sure which Mac you have? Open **Apple menu → About This Mac**:
 
@@ -48,6 +48,17 @@ RATtler scans automatically when it opens. You can also click **Scan now**.
 If RATtler says it is running from Downloads, close it, drag it into
 **Applications**, and reopen it there. RATtler excludes its exact app and
 scan-engine process IDs so it does not flag itself.
+
+## Interactive endpoint overview
+
+The Dashboard includes a local 3D defense map built into the app—no remote
+graphics or web service. Move the pointer across it to inspect the endpoint from
+different angles, or select Platform Protection, Processes, Network,
+Persistence, Files, or BluePulse. Each layer shows current report evidence and
+opens its corresponding investigation view. Keyboard focus and reduced-motion
+preferences are supported.
+
+![RATtler interactive endpoint overview](docs/images/rattler-healthy.png)
 
 ## Keep RATtler running
 
@@ -174,17 +185,16 @@ aged out.
 **Recover copies** verifies the stored objects and creates a new timestamped
 folder on the Desktop. It never overwrites, deletes, or silently replaces the
 original files. Recovery is intentionally separate from detection because the
-vault reads eligible file contents only after the user opts in.
+vault reads eligible file contents only after the user opts in. Detection now
+runs before automatic vault refreshes; refresh work continues in the background
+and aborts without replacing the last complete manifest if ransomware evidence
+freezes the vault.
 
 ![RATtler Ransomware Defense](docs/images/rattler-ransomware.png)
 
-## Screenshots
+## Risk example
 
-These use safe synthetic data; no malware was installed to create them.
-
-Healthy endpoint:
-
-![RATtler showing a healthy endpoint](docs/images/rattler-healthy.png)
+This uses safe synthetic data; no malware was installed to create it.
 
 Risk detected:
 

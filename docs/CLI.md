@@ -156,6 +156,12 @@ rattler recovery backup --store ~/.rattler/recovery \
 rattler recovery status --store ~/.rattler/recovery --pretty
 ```
 
+The macOS app runs detection before each automatic refresh and passes its
+private vault freeze marker with `--abort-if-exists`. If ransomware evidence
+appears while a refresh is running, the backup exits without replacing the last
+complete manifest. This option is intended for trusted local orchestration; it
+does not decide whether activity is ransomware.
+
 The default quota is 512 MiB and the per-file limit is 16 MiB. Only common
 document and photo extensions are copied, objects are content-addressed, and up
 to three versions are retained per path. The macOS app refreshes an enabled

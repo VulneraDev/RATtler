@@ -14,8 +14,8 @@ class MacOSAppSourceTests(unittest.TestCase):
         with (APP / "Info.plist").open("rb") as handle:
             info = plistlib.load(handle)
         self.assertEqual(info["CFBundleIdentifier"], "dev.vulnera.rattler")
-        self.assertEqual(info["CFBundleShortVersionString"], "0.17.0")
-        self.assertEqual(info["CFBundleVersion"], "21")
+        self.assertEqual(info["CFBundleShortVersionString"], "0.18.0")
+        self.assertEqual(info["CFBundleVersion"], "22")
         self.assertEqual(info["LSMinimumSystemVersion"], "13.0")
         self.assertTrue(info["LSMultipleInstancesProhibited"])
 
@@ -39,6 +39,10 @@ class MacOSAppSourceTests(unittest.TestCase):
         self.assertIn("Path-only allowlisting is refused", html)
         self.assertIn("Choose file or folder", script)
         self.assertIn("YARA and static inspection", script)
+        self.assertIn("Interactive defense overview", script)
+        self.assertIn("endpointLayers", script)
+        self.assertIn("prefers-reduced-motion: reduce", script)
+        self.assertIn("tabindex=\"0\"", script)
 
     def test_quarantine_requires_native_review_and_exact_hash(self):
         host = (APP / "Sources/main.m").read_text(encoding="utf-8")
@@ -150,13 +154,23 @@ class MacOSAppSourceTests(unittest.TestCase):
         self.assertIn('@"recovery", @"restore-all"', host)
         self.assertIn('@"RATtler Recovered %@"', host)
         self.assertIn('freezeRecoveryForReport', host)
+        self.assertIn('refreshRecoveryAfterReport', host)
+        self.assertIn('@"--abort-if-exists", [self recoveryFreezeURL].path', host)
+        detection = host.index("NSDictionary *result = [self runEngineArguments:arguments];", host.index("- (void)startScan"))
+        refresh = host.index("[self refreshRecoveryAfterReport:(NSDictionary *)report];", detection)
+        self.assertLess(detection, refresh)
+        enable_start = host.index("- (void)enableRecovery {")
+        enable = host[enable_start:host.index("- (void)recoverFiles {", enable_start)]
+        self.assertIn('@"phase": @"working"', enable)
+        self.assertIn("self.recoveryUpdating = YES;", enable)
+        self.assertNotIn("self.scanning = YES;", enable)
 
     def test_download_and_gatekeeper_instructions_are_plain(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         build = (APP / "build.sh").read_text(encoding="utf-8")
         self.assertIn("Download **one ZIP**", readme)
-        self.assertIn("releases/download/v0.17.0/RATtler-macOS-Apple-Silicon.zip", readme)
-        self.assertIn("releases/download/v0.17.0/RATtler-macOS-Intel.zip", readme)
+        self.assertIn("releases/download/v0.18.0/RATtler-macOS-Apple-Silicon.zip", readme)
+        self.assertIn("releases/download/v0.18.0/RATtler-macOS-Intel.zip", readme)
         self.assertIn("System Settings → Privacy & Security", readme)
         self.assertIn("Open Anyway", readme)
         self.assertIn('release_architecture="Apple-Silicon"', build)
@@ -167,6 +181,13 @@ class MacOSAppSourceTests(unittest.TestCase):
         self.assertIn("NSTask", host)
         self.assertNotIn("/bin/sh", host)
         self.assertNotIn("system(", host)
+
+    def test_native_host_tracks_and_stops_child_tasks(self):
+        host = (APP / "Sources/main.m").read_text(encoding="utf-8")
+        self.assertIn("NSMutableSet<NSTask *> *engineTasks", host)
+        self.assertIn("[self.engineTasks addObject:task]", host)
+        self.assertIn("[self.engineTasks removeObject:task]", host)
+        self.assertIn("if (task.running) [task terminate]", host)
 
     def test_readme_screenshots_are_reproducible_pngs(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")

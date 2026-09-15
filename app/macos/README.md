@@ -5,6 +5,12 @@ interface. It runs the open-source RATtler engine as a child process, renders
 its structured report, and offers explicit local quarantine for eligible
 file-backed findings without uploading endpoint data.
 
+The Dashboard renders six current sensor layers as an interactive CSS 3D
+endpoint model. Pointer movement changes perspective; selecting a keyboard-
+accessible node updates its evidence inspector and can open the related native
+view. The model uses only the report already loaded in WebKit, makes no network
+requests, and honors the macOS reduced-motion preference.
+
 The BluePulse view separates detection confidence from threat status. It shows
 scan freshness, responding layers, native scheduling and pause state,
 monitoring-file permission health, protected-folder FSEvents continuity, native
@@ -32,8 +38,11 @@ is running, even when its main window is closed. See the
 
 Recovery Vault is optional. After native confirmation it keeps up to 512 MB of
 versioned, content-addressed document and photo copies beneath Application
-Support. Automatic updates freeze on ransomware evidence. Reviewed recovery
-creates a new Desktop folder and never overwrites originals.
+Support. Detection runs before automatic refresh work, so a large vault does
+not delay an FSEvents-triggered scan. Refreshes run separately and watch the
+freeze marker; ransomware evidence aborts an in-progress refresh without
+replacing the last complete manifest. Reviewed recovery creates a new Desktop
+folder and never overwrites originals.
 
 Deep Scan reads only a file or folder selected through the native picker. It
 applies the bundled community YARA rules, calculates SHA-256, inspects Mach-O

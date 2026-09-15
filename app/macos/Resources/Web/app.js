@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const state = { report: null, fileScan: null, detectionLab: null, quarantine: [], exceptions: [], capabilities: { baseline: false, nativeEvents: false, fileEvents: false, fileEventRoots: 0, yaraRules: false, detectionLab: false, recovery: false, recoveryFrozen: false, recoveryError: false, installed: true, appPath: "", monitoringPaused: false, backgroundInterval: 60, menuBar: true, launchAtLogin: false, launchAtLoginStatus: "not registered", notificationsEnabled: false, version: "0.17.0" }, phase: "starting" };
+  const state = { report: null, fileScan: null, detectionLab: null, quarantine: [], exceptions: [], capabilities: { baseline: false, nativeEvents: false, fileEvents: false, fileEventRoots: 0, yaraRules: false, detectionLab: false, recovery: false, recoveryFrozen: false, recoveryUpdating: false, recoveryError: false, installed: true, appPath: "", monitoringPaused: false, backgroundInterval: 60, menuBar: true, launchAtLogin: false, launchAtLoginStatus: "not registered", notificationsEnabled: false, version: "0.18.0" }, phase: "starting" };
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const esc = value => String(value ?? "—").replace(/[&<>'"]/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[char]));
@@ -36,6 +36,36 @@
   };
   const ageLabel = age => !Number.isFinite(age) ? "Unknown" : age < 60000 ? "Just now" : `${Math.floor(age / 60000)} min ago`;
   const byteLabel = value => { const size=Number(value||0); if(size<1024)return `${size} B`; if(size<1048576)return `${(size/1024).toFixed(1)} KB`; if(size<1073741824)return `${(size/1048576).toFixed(1)} MB`; return `${(size/1073741824).toFixed(1)} GB`; };
+  const combinedStatus = checks => {
+    const statuses = checks.filter(Boolean).map(check => check.status || "unknown");
+    return ["unhealthy","unknown","degraded","healthy"].find(status => statuses.includes(status)) || "unknown";
+  };
+
+  function endpointLayers(report) {
+    const protection = report.protection || {}, behavior = report.behavior || {};
+    const sensors = behavior.sensors || [], sensor = name => sensors.find(item => item.name === name);
+    const findings = behavior.findings || [];
+    const layerFindings = categories => findings.filter(item => categories.includes(item.category));
+    const layerStatus = (checks,categories) => {
+      const matches = layerFindings(categories);
+      if (matches.some(item => ["critical","high"].includes(item.severity))) return "unhealthy";
+      if (matches.length) return "degraded";
+      return combinedStatus(checks);
+    };
+    const processes = sensor("processes"), listeners = sensor("listeners"), atlas = sensor("persistence_atlas") || sensor("persistence");
+    const ransomware = sensor("ransomware"), fileEvents = sensor("native_file_events"), pulse = sensor("bluepulse"), loaded = sensor("loaded_images");
+    const protectionChecks = protection.checks || [], fileChecks = [ransomware,fileEvents].filter(Boolean);
+    const protectedCount = protectionChecks.filter(check => check.status === "healthy").length;
+    const fileDetails = ransomware?.details || {}, eventDetails = fileEvents?.details || {}, pulseDetails = pulse?.details || {}, atlasDetails = atlas?.details || {};
+    return [
+      {id:"protection",label:"Platform protection",short:"Protection",icon:"shield",view:"bluepulse",status:combinedStatus(protectionChecks),message:`${protectedCount} of ${protectionChecks.length} built-in protection checks are healthy.`,facts:[["Provider",protection.provider||"Unknown"],["Healthy",`${protectedCount}/${protectionChecks.length}`],["Host",protection.hostname||"This Mac"]]},
+      {id:"processes",label:"Process activity",short:"Processes",icon:"pulse",view:"findings",status:layerStatus([processes,loaded].filter(Boolean),["process","injection"]),message:layerFindings(["process","injection"]).length?`${layerFindings(["process","injection"]).length} process or loaded-code indicator${layerFindings(["process","injection"]).length===1?"":"s"} require review.`:processes?.message||"Process inventory is unavailable.",facts:[["Observed",Number(processes?.details?.count||0).toLocaleString()],["Loaded mappings",Number(loaded?.details?.mappings||0).toLocaleString()],["Findings",String(layerFindings(["process","injection"]).length)]]},
+      {id:"network",label:"Network exposure",short:"Network",icon:"coverage",view:"findings",status:layerStatus([listeners].filter(Boolean),["network"]),message:layerFindings(["network"]).length?`${layerFindings(["network"]).length} network indicator${layerFindings(["network"]).length===1?"":"s"} require review.`:listeners?.message||"Network listener coverage is unavailable.",facts:[["Listeners",Number(listeners?.details?.count||0).toLocaleString()],["Activity",String((behavior.events||[]).filter(item=>String(item.event_type||"").includes("connection")).length)],["Findings",String(layerFindings(["network"]).length)]]},
+      {id:"persistence",label:"Persistence Atlas",short:"Persistence",icon:"atlas",view:"persistence",status:layerStatus([atlas].filter(Boolean),["persistence"]),message:layerFindings(["persistence"]).length?`${layerFindings(["persistence"]).length} persistence indicator${layerFindings(["persistence"]).length===1?"":"s"} require review.`:atlas?.message||"Persistence coverage is unavailable.",facts:[["Sources",`${Number(atlasDetails.sources_healthy||0)}/${Number(atlasDetails.sources_checked||0)}`],["Objects",Number(atlasDetails.items||atlas?.details?.count||0).toLocaleString()],["Findings",String(layerFindings(["persistence"]).length)]]},
+      {id:"files",label:"File defense",short:"Files",icon:"lock",view:"ransomware",status:layerStatus(fileChecks,["ransomware"]),message:layerFindings(["ransomware"]).length?`${layerFindings(["ransomware"]).length} ransomware indicator${layerFindings(["ransomware"]).length===1?"":"s"} require review.`:fileEvents?.status==="healthy"?"FSEvents is triggering bounded ransomware snapshots.":fileEvents?.message||ransomware?.message||"File-defense coverage is unavailable.",facts:[["Files watched",Number(fileDetails.monitored_files||0).toLocaleString()],["Native events",Number(eventDetails.events_seen||0).toLocaleString()],["Findings",String(layerFindings(["ransomware"]).length)]]},
+      {id:"confidence",label:"BluePulse confidence",short:"BluePulse",icon:"check",view:"bluepulse",status:pulse?.status||"unknown",message:pulse?.message||"Detection confidence is unavailable.",facts:[["Confidence",title(pulseDetails.confidence||"unknown")],["Operational",`${Number(pulseDetails.operational||0)}/${Number(pulseDetails.monitored||0)}`],["Coverage gaps",String((pulseDetails.coverage_gaps||[]).length)]]}
+    ];
+  }
 
   function renderDashboard() {
     if (!state.report) return;
@@ -56,6 +86,9 @@
     const coverage = checks.slice(0,6).map(checkRow).join("");
     const nativeNotice = state.capabilities.nativeEvents ? "" : `<div class="notice warning"><span>◇</span><div><strong>Native telemetry pending</strong><p>Apple’s restricted entitlement is not active. Snapshot and integrity sensors remain available.</p></div></div>`;
     const installNotice = state.capabilities.installed ? "" : `<div class="notice install-notice"><span>→</span><div><strong>Finish installing RATtler</strong><p>Close RATtler, drag it into Applications, then open it from Applications. This prevents download-location alerts.</p></div><button id="show-app-button" class="quiet-button">Show RATtler</button></div>`;
+    const layers = endpointLayers(report), initialLayer = layers.findIndex(item => item.id === "files");
+    const layerNodes = layers.map((item,index)=>`<button class="topology-node node-${index} ${esc(item.status)}" data-layer="${index}" aria-label="Inspect ${esc(item.label)}" aria-pressed="false"><span>${icon(item.icon)}</span><strong>${esc(item.short)}</strong><i></i></button>`).join("");
+    const rays = layers.map((_,index)=>`<i class="map-ray ray-${index}"></i>`).join("");
     $("#dashboard-content").className = "";
     $("#dashboard-content").innerHTML = `
       <article class="panel hero ${esc(report.status)}"><div class="shield-orbit"></div><div class="hero-copy"><div class="status-kicker">${esc(statusLabel(report.status).toUpperCase())}</div><h2>${esc(heroCopy[0])}</h2><p>${esc(heroCopy[1])}</p><div class="hostline">▣ ${esc(protection.hostname || "This Mac")} &nbsp;•&nbsp; ${esc(observed)}</div></div><button class="scan-button dashboard-scan"><span>↻</span>Scan now</button></article>${installNotice}
@@ -65,9 +98,28 @@
         ${metric(title(pulseConfidence),"BluePulse","Detection confidence","pulse",pulseKind)}
         ${metric((behavior.events || []).length,"Activity","Recent correlated events","clock","info")}
       </div>
+      <article class="panel topology-panel"><div class="topology-head"><div><small>LIVE ENDPOINT MODEL</small><h3>Interactive defense overview</h3><p>Select a sensor layer to inspect current evidence.</p></div><span><i></i>${state.capabilities.monitoringPaused?"PAUSED":"LOCAL · LIVE"}</span></div><div class="topology-layout"><div class="endpoint-stage" tabindex="0" aria-label="Interactive three-dimensional endpoint sensor map"><div class="endpoint-scene"><div class="map-ring ring-a"></div><div class="map-ring ring-b"></div><div class="map-ring ring-c"></div><div class="map-rays">${rays}</div><div class="map-core ${esc(report.status)}"><b>R</b><span>${esc(statusLabel(report.status))}</span></div>${layerNodes}<div class="map-shadow"></div></div></div><aside id="topology-inspector" class="topology-inspector"><div id="topology-kicker" class="status-kicker"></div><h4 id="topology-name"></h4><p id="topology-message"></p><dl id="topology-facts"></dl><button id="topology-open" class="quiet-button">Open details →</button></aside></div></article>
       <div class="dashboard-grid"><article class="panel card-block"><div class="card-title"><div><h3>Priority findings</h3><p>Indicators that deserve attention first</p></div><span>${findings.length} total</span></div>${priority}</article><article class="panel card-block"><div class="card-title"><div><h3>Sensor coverage</h3><p>Latest health by layer</p></div></div>${coverage}${nativeNotice}</article></div>`;
     $(".dashboard-scan")?.addEventListener("click", () => native("scan"));
     $("#show-app-button")?.addEventListener("click", () => native("revealApp"));
+    const stage = $(".endpoint-stage"), scene = $(".endpoint-scene");
+    const selectLayer = index => {
+      const item = layers[index] || layers[0], inspector = $("#topology-inspector");
+      $$(".topology-node",stage).forEach((node,nodeIndex)=>{node.classList.toggle("selected",nodeIndex===index);node.setAttribute("aria-pressed",nodeIndex===index?"true":"false");});
+      inspector.className=`topology-inspector ${item.status}`;
+      $("#topology-kicker").textContent=statusLabel(item.status).toUpperCase();
+      $("#topology-name").textContent=item.label;
+      $("#topology-message").textContent=item.message;
+      $("#topology-facts").innerHTML=item.facts.map(([key,value])=>`<div><dt>${esc(key)}</dt><dd>${esc(value)}</dd></div>`).join("");
+      $("#topology-open").dataset.view=item.view;
+    };
+    $$(".topology-node",stage).forEach(node=>node.addEventListener("click",()=>selectLayer(Number(node.dataset.layer))));
+    $("#topology-open")?.addEventListener("click",event=>document.querySelector(`[data-view="${event.currentTarget.dataset.view}"]`)?.click());
+    if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      stage?.addEventListener("pointermove",event=>{const rect=stage.getBoundingClientRect(),x=(event.clientX-rect.left)/rect.width-.5,y=(event.clientY-rect.top)/rect.height-.5;scene.style.setProperty("--scene-x",`${-10-y*10}deg`);scene.style.setProperty("--scene-y",`${x*16}deg`);});
+      stage?.addEventListener("pointerleave",()=>{scene.style.setProperty("--scene-x","-10deg");scene.style.setProperty("--scene-y","0deg");});
+    }
+    selectLayer(initialLayer < 0 ? 0 : initialLayer);
   }
 
   const metric = (value,label,detail,iconName,kind) => `<article class="panel metric ${kind}"><span class="metric-icon">${icon(iconName)}</span><div><strong>${esc(value)}</strong><label>${esc(label)}</label><small>${esc(detail)}</small></div></article>`;
@@ -187,11 +239,12 @@
     const indicatorList = findings.length ? findings.map(finding => `<div class="ransom-finding">${findingRow(finding)}${evidence(finding.evidence)}</div>`).join("") : `<div class="ransom-clear"><span>✓</span><div><strong>No active ransomware indicators</strong><p>Normal file changes can still occur; RATtler alerts only when a defined behavior threshold is crossed.</p></div></div>`;
     const recoveryEnabled = state.capabilities.recovery === true;
     const recoveryFrozen = state.capabilities.recoveryFrozen === true;
+    const recoveryUpdating = state.capabilities.recoveryUpdating === true;
     const recoveryError = state.capabilities.recoveryError === true;
     const recoveryDetails = recoverySensor?.details || {};
-    const recoveryHeadline = !recoveryEnabled ? "Recovery Vault is off" : recoveryFrozen ? "Clean recovery versions are frozen" : recoveryError ? "Recovery Vault needs attention" : "Recovery Vault is active";
-    const recoveryCopy = !recoveryEnabled ? "Opt in to keep quota-limited, versioned copies of common documents and photos entirely on this Mac." : recoveryFrozen ? "RATtler stopped adding versions after ransomware evidence so known-good copies are not aged out." : recoveryError ? "The latest automatic backup failed. Open the vault and run another scan after checking free space and folder access." : `${Number(recoveryDetails.recoverable_files||0).toLocaleString()} files have protected versions. Backups refresh automatically while RATtler is open.`;
-    const recoveryActions = !recoveryEnabled ? `<button id="enable-recovery-button" class="quiet-button primary">Enable vault</button>` : `${severe||recoveryFrozen?`<button id="recover-files-button" class="quiet-button primary">Recover copies</button>`:""}<button id="reveal-recovery-button" class="quiet-button">Open vault</button>${recoveryFrozen?`<button id="resume-recovery-button" class="quiet-button warning">Resume backups</button>`:""}`;
+    const recoveryHeadline = recoveryFrozen ? "Clean recovery versions are frozen" : recoveryUpdating ? recoveryEnabled?"Recovery Vault is refreshing":"Recovery Vault is being created" : !recoveryEnabled ? "Recovery Vault is off" : recoveryError ? "Recovery Vault needs attention" : "Recovery Vault is active";
+    const recoveryCopy = recoveryFrozen ? recoveryEnabled?"RATtler stopped adding versions after ransomware evidence so known-good copies are not aged out.":"Recovery setup stopped before publishing a manifest because ransomware evidence appeared." : recoveryUpdating ? "Detection remains active while clean document and photo versions refresh in the background." : !recoveryEnabled ? "Opt in to keep quota-limited, versioned copies of common documents and photos entirely on this Mac." : recoveryError ? "The latest automatic backup failed. Open the vault and run another scan after checking free space and folder access." : `${Number(recoveryDetails.recoverable_files||0).toLocaleString()} files have protected versions. Backups refresh automatically while RATtler is open.`;
+    const recoveryActions = recoveryUpdating ? `<button id="reveal-recovery-button" class="quiet-button">Open vault</button>` : !recoveryEnabled&&!recoveryFrozen ? `<button id="enable-recovery-button" class="quiet-button primary">Enable vault</button>` : `${recoveryEnabled&&(severe||recoveryFrozen)?`<button id="recover-files-button" class="quiet-button primary">Recover copies</button>`:""}<button id="reveal-recovery-button" class="quiet-button">Open vault</button>${recoveryFrozen?`<button id="resume-recovery-button" class="quiet-button warning">${recoveryEnabled?"Resume backups":"Clear freeze"}</button>`:""}`;
     $("#ransomware-content").innerHTML = `
       <article class="panel ransom-hero ${esc(heroStatus)}"><div class="ransom-emblem">${icon("lock")}<i></i></div><div class="ransom-copy"><div class="status-kicker">${severe?"ACTION REQUIRED":warning?"REVIEW COVERAGE":"MONITORING"}</div><h2>${esc(headline)}</h2><p>${esc(copy)}</p><small>FSEvents trigger snapshots within seconds while RATtler is running. Automatic write blocking is not enabled.</small></div><div class="ransom-sweep"><i></i></div></article>
       <div class="metrics ransom-metrics">
@@ -204,7 +257,7 @@
         <article class="panel card-block"><div class="card-title"><div><h3>Ransomware signals</h3><p>Independent evidence checked on each triggered scan</p></div><span>${fileEvents.status==="healthy"?"FSEvents + snapshots":esc(details.detection_mode||"snapshot monitoring")}</span></div>${signals.map(checkRow).join("")}</article>
         <article class="panel card-block"><div class="card-title"><div><h3>Protected folders</h3><p>Metadata only—RATtler does not upload file contents</p></div></div><div class="folder-pills">${folders.length?folders.map(folder=>`<span>${icon("folder")}${esc(folder)}</span>`).join(""):`<p>Desktop, Documents, and Pictures could not be read. Review macOS folder permissions.</p>`}</div><div class="ransom-limit"><strong>${details.limited?"PARTIAL COVERAGE":"BOUNDED COVERAGE"}</strong><span>Up to ${Number(details.max_files||0).toLocaleString()} files per scan</span></div></article>
       </div>
-      <article class="panel recovery-card ${recoveryFrozen||recoveryError?"frozen":recoveryEnabled?"active":""}"><span class="recovery-symbol">${icon("shield")}</span><div><div class="status-kicker">${!recoveryEnabled?"OPT-IN RECOVERY":recoveryFrozen?"VAULT FROZEN":recoveryError?"BACKUP ERROR":"VERSIONED LOCALLY"}</div><h3>${esc(recoveryHeadline)}</h3><p>${esc(recoveryCopy)}</p><small>512 MB quota · common documents and photos · recovery never overwrites originals</small></div><div class="recovery-actions">${recoveryActions}</div></article>
+      <article class="panel recovery-card ${recoveryFrozen||recoveryError?"frozen":recoveryEnabled||recoveryUpdating?"active":""}"><span class="recovery-symbol">${icon("shield")}</span><div><div class="status-kicker">${recoveryFrozen?"VAULT FROZEN":recoveryUpdating?"BACKGROUND REFRESH":!recoveryEnabled?"OPT-IN RECOVERY":recoveryError?"BACKUP ERROR":"VERSIONED LOCALLY"}</div><h3>${esc(recoveryHeadline)}</h3><p>${esc(recoveryCopy)}</p><small>Detection runs first · 512 MB quota · recovery never overwrites originals</small></div><div class="recovery-actions">${recoveryActions}</div></article>
       <article class="panel card-block ransom-indicators"><div class="card-title"><div><h3>Current ransomware indicators</h3><p>Evidence is also available in Findings and the local Activity timeline</p></div><span>${findings.length} active</span></div>${indicatorList}</article>`;
     $$(".ransom-finding", $("#ransomware-content")).forEach(row => row.addEventListener("click", () => row.classList.toggle("expanded")));
     $("#enable-recovery-button")?.addEventListener("click",()=>native("enableRecovery"));

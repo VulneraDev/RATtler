@@ -54,6 +54,7 @@
         @"fileEventRoots": @3,
         @"recovery": @YES,
         @"recoveryFrozen": @([self.viewID isEqualToString:@"ransomware"]),
+        @"recoveryUpdating": @NO,
         @"recoveryError": @NO,
         @"installed": @YES,
         @"monitoringPaused": @NO,
@@ -62,7 +63,7 @@
         @"launchAtLogin": @YES,
         @"launchAtLoginStatus": @"enabled",
         @"notificationsEnabled": @YES,
-        @"version": @"0.17.0",
+        @"version": @"0.18.0",
     } options:0 error:nil];
     NSData *ready = [NSJSONSerialization dataWithJSONObject:@{
         @"phase": @"ready",

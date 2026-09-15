@@ -225,6 +225,23 @@ FSEvents cannot attribute a change to its responsible process or block a write.
 Those capabilities remain gated on the Endpoint Security entitlement and signed
 system-extension milestones below.
 
+## 0.18 — Interactive endpoint model and responsive recovery
+
+Status: implemented.
+
+- Add a dependency-free CSS 3D endpoint model to the Dashboard with six
+  selectable sensor layers and report-backed detail.
+- Let each layer open the relevant investigation view while retaining keyboard
+  focus, reduced-motion support, and the app's no-network content policy.
+- Run ransomware detection before automatic Recovery Vault refreshes so large
+  backups cannot delay a protected-folder event scan.
+- Keep vault refresh work separate from the scan path and expose its live state
+  in the Ransomware view.
+- Abort an in-progress refresh when ransomware evidence creates the freeze
+  marker, without replacing the last complete recovery manifest.
+- Track native child tasks and terminate active engine work during a clean app
+  shutdown.
+
 ## 1.0 — Signed system extension and tamper evidence
 
 Status: planned after prevention validation.

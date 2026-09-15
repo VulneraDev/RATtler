@@ -185,6 +185,7 @@ def backup(
     max_file_bytes: int = DEFAULT_MAX_FILE_BYTES,
     max_files: int = DEFAULT_MAX_FILES,
     apply: bool = False,
+    abort_if_exists: Optional[Path] = None,
 ) -> Dict[str, object]:
     root_list = [path.expanduser().absolute() for path in roots]
     _, manifest_path, objects = _prepare_store(store)
@@ -214,14 +215,23 @@ def backup(
         "available_roots": available,
         "quota_bytes": quota_bytes,
         "used_bytes": _store_usage(objects),
+        "aborted": False,
     }
     if not apply:
+        return result
+
+    abort_marker = abort_if_exists.expanduser().absolute() if abort_if_exists else None
+    if abort_marker is not None and abort_marker.exists():
+        result["aborted"] = True
         return result
 
     _prune_unreferenced(objects, files)
     used = _store_usage(objects)
     observed_at = datetime.now(timezone.utc).isoformat()
     for raw_path, expected in candidates:
+        if abort_marker is not None and abort_marker.exists():
+            result["aborted"] = True
+            return result
         path = Path(raw_path)
         try:
             payload, metadata = _safe_read(path, max_file_bytes)
@@ -281,6 +291,9 @@ def backup(
             versions[-1] = version
         files[raw_path] = {"versions": versions}
         result["stored_files"] = int(result["stored_files"]) + 1
+    if abort_marker is not None and abort_marker.exists():
+        result["aborted"] = True
+        return result
     manifest["roots"] = available
     manifest["quota_bytes"] = quota_bytes
     manifest["max_file_bytes"] = max_file_bytes
@@ -410,6 +423,9 @@ def _parser() -> argparse.ArgumentParser:
     backup_command.add_argument("--quota-bytes", type=int, default=DEFAULT_QUOTA_BYTES)
     backup_command.add_argument("--max-file-bytes", type=int, default=DEFAULT_MAX_FILE_BYTES)
     backup_command.add_argument("--max-files", type=int, default=DEFAULT_MAX_FILES)
+    backup_command.add_argument(
+        "--abort-if-exists", help="stop without updating the manifest if this marker appears",
+    )
     backup_command.add_argument("--apply", action="store_true")
     status_command = commands.add_parser("status", help="show recovery-vault status")
     status_command.add_argument("--store", required=True)
@@ -431,6 +447,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             result = backup(
                 Path(args.store), [Path(item) for item in args.root], quota_bytes=args.quota_bytes,
                 max_file_bytes=args.max_file_bytes, max_files=args.max_files, apply=args.apply,
+                abort_if_exists=Path(args.abort_if_exists) if args.abort_if_exists else None,
             )
         elif args.command == "status":
             result = status(Path(args.store))

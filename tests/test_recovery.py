@@ -3,7 +3,9 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
+import rattler.recovery as recovery_module
 from rattler.recovery import backup, restore_all, status
 
 
@@ -83,6 +85,51 @@ class RecoveryVaultTests(unittest.TestCase):
             result = backup(store, [root], quota_bytes=50, max_file_bytes=200, apply=True)
         self.assertEqual(result["stored_files"], 0)
         self.assertEqual(result["skipped_files"], 1)
+
+    def test_freeze_marker_aborts_without_replacing_clean_manifest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            root = base / "Documents"
+            root.mkdir()
+            source = root / "report.docx"
+            store = base / "vault"
+            source.write_bytes(b"clean version")
+            backup(store, [root], apply=True)
+            original = (store / "manifest.json").read_bytes()
+            source.write_bytes(b"changed after suspicious activity")
+            marker = store / "frozen"
+            marker.write_text("freeze", encoding="utf-8")
+            result = backup(store, [root], apply=True, abort_if_exists=marker)
+            current = (store / "manifest.json").read_bytes()
+        self.assertTrue(result["aborted"])
+        self.assertEqual(result["stored_files"], 0)
+        self.assertEqual(current, original)
+
+    def test_freeze_during_backup_keeps_last_complete_manifest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            root = base / "Documents"
+            root.mkdir()
+            source = root / "report.docx"
+            store = base / "vault"
+            source.write_bytes(b"clean version")
+            backup(store, [root], apply=True)
+            original = (store / "manifest.json").read_bytes()
+            source.write_bytes(b"changed during refresh")
+            (root / "second.txt").write_bytes(b"second changed file")
+            marker = store / "frozen"
+            real_safe_read = recovery_module._safe_read
+
+            def freeze_after_read(path, max_bytes):
+                payload = real_safe_read(path, max_bytes)
+                marker.write_text("freeze", encoding="utf-8")
+                return payload
+
+            with patch("rattler.recovery._safe_read", side_effect=freeze_after_read):
+                result = backup(store, [root], apply=True, abort_if_exists=marker)
+            current = (store / "manifest.json").read_bytes()
+        self.assertTrue(result["aborted"])
+        self.assertEqual(current, original)
 
     def test_corrupted_object_is_not_recovered(self):
         with tempfile.TemporaryDirectory() as directory:

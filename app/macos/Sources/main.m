@@ -18,6 +18,7 @@ static void RATFileEventCallback(ConstFSEventStreamRef streamRef, void *clientCa
 @property(nonatomic, strong) NSData *lastReport;
 @property(nonatomic, copy) NSString *lastFileScanPath;
 @property(nonatomic, assign) BOOL scanning;
+@property(nonatomic, assign) BOOL recoveryUpdating;
 @property(nonatomic, assign) BOOL monitoringPaused;
 @property(nonatomic, assign) BOOL notificationsEnabled;
 @property(nonatomic, strong) NSDate *lastScanDate;
@@ -40,13 +41,16 @@ static void RATFileEventCallback(ConstFSEventStreamRef streamRef, void *clientCa
 @property(nonatomic, strong) NSDate *fileEventStartedDate;
 @property(nonatomic, strong) NSDate *lastFileEventDate;
 @property(nonatomic, strong) NSDate *lastFileEventScanDate;
+@property(nonatomic, strong) NSDate *lastRecoveryRefreshDate;
 @property(nonatomic, strong) NSTimer *fileEventScanTimer;
+@property(nonatomic, strong) NSMutableSet<NSTask *> *engineTasks;
 - (NSString *)responseErrorFromResult:(NSDictionary *)result fallback:(NSString *)fallback;
 - (BOOL)isValidSHA256:(NSString *)digest;
 - (BOOL)isValidCDHash:(NSString *)digest;
 - (void)enableRecovery;
 - (void)recoverFiles;
 - (void)resumeRecovery;
+- (void)refreshRecoveryAfterReport:(NSDictionary *)report;
 - (void)planFindingException:(NSDictionary *)exception fileScan:(BOOL)fileScan;
 - (NSArray<NSString *> *)exceptionArgumentsForFinding:(NSDictionary *)exception apply:(BOOL)apply;
 - (void)listExceptions;
@@ -89,6 +93,7 @@ static void RATFileEventCallback(ConstFSEventStreamRef streamRef, void *clientCa
     self.monitoringPaused = [defaults boolForKey:@"RATMonitoringPaused"];
     self.notificationsEnabled = [defaults boolForKey:@"RATNotificationsEnabled"];
     self.lastNotificationKey = [defaults stringForKey:@"RATLastNotificationKey"];
+    self.engineTasks = [NSMutableSet set];
     [UNUserNotificationCenter currentNotificationCenter].delegate = self;
     [self loadLastReport];
     WKUserContentController *messages = [[WKUserContentController alloc] init];
@@ -158,6 +163,13 @@ static void RATFileEventCallback(ConstFSEventStreamRef streamRef, void *clientCa
     (void)notification;
     [self.scanTimer invalidate];
     [self.fileEventScanTimer invalidate];
+    NSArray<NSTask *> *tasks = nil;
+    @synchronized (self) {
+        tasks = self.engineTasks.allObjects;
+    }
+    for (NSTask *task in tasks) {
+        if (task.running) [task terminate];
+    }
     if (self.fileEventStream != NULL) {
         FSEventStreamStop(self.fileEventStream);
         FSEventStreamInvalidate(self.fileEventStream);
@@ -781,6 +793,7 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
         @"--root", [home stringByAppendingPathComponent:@"Desktop"],
         @"--root", [home stringByAppendingPathComponent:@"Documents"],
         @"--root", [home stringByAppendingPathComponent:@"Pictures"],
+        @"--abort-if-exists", [self recoveryFreezeURL].path,
         @"--apply", @"--pretty",
     ];
 }
@@ -818,10 +831,48 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
 }
 
 - (void)freezeRecoveryForReport:(NSDictionary *)report {
-    if (![self recoveryEnabled] || ![self reportContainsRansomwareFinding:report]) return;
+    if ((!self.recoveryUpdating && ![self recoveryEnabled]) ||
+        ![self reportContainsRansomwareFinding:report]) return;
+    NSURL *directory = [[[self applicationDataDirectory] URLByAppendingPathComponent:@"recovery"
+                                                                          isDirectory:YES] absoluteURL];
+    [[NSFileManager defaultManager] createDirectoryAtURL:directory
+                             withIntermediateDirectories:YES
+                                              attributes:@{NSFilePosixPermissions: @0700}
+                                                   error:nil];
+    chmod(directory.fileSystemRepresentation, 0700);
     NSData *marker = [@"Frozen after ransomware evidence.\n" dataUsingEncoding:NSUTF8StringEncoding];
     [marker writeToURL:[self recoveryFreezeURL] options:NSDataWritingAtomic error:nil];
     chmod([self recoveryFreezeURL].fileSystemRepresentation, 0600);
+}
+
+- (void)refreshRecoveryAfterReport:(NSDictionary *)report {
+    if (self.recoveryUpdating || ![self recoveryEnabled] || [self recoveryFrozen] ||
+        [self reportContainsRansomwareFinding:report]) return;
+    if (self.lastRecoveryRefreshDate != nil &&
+        -[self.lastRecoveryRefreshDate timeIntervalSinceNow] < 300.0) return;
+    self.recoveryUpdating = YES;
+    self.lastRecoveryRefreshDate = [NSDate date];
+    [self sendCapabilities];
+    NSArray<NSString *> *arguments = [self recoveryBackupArguments];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        NSDictionary *result = [self runEngineArguments:arguments];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.recoveryUpdating = NO;
+            NSData *output = result[@"output"];
+            NSDictionary *document = output.length
+                ? [NSJSONSerialization JSONObjectWithData:output options:0 error:nil] : nil;
+            BOOL aborted = [document[@"aborted"] boolValue];
+            NSURL *errorMarker = [self recoveryErrorURL];
+            if ([result[@"status"] intValue] == 0 || aborted) {
+                [[NSFileManager defaultManager] removeItemAtURL:errorMarker error:nil];
+            } else {
+                NSData *marker = [@"The latest automatic recovery backup failed.\n" dataUsingEncoding:NSUTF8StringEncoding];
+                [marker writeToURL:errorMarker options:NSDataWritingAtomic error:nil];
+                chmod(errorMarker.fileSystemRepresentation, 0600);
+            }
+            [self sendCapabilities];
+        });
+    });
 }
 
 - (void)startScan {
@@ -833,23 +884,9 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
     [self sendObject:@{@"phase": @"scanning", @"message": @"Inspecting this Mac…"}
             function:@"receiveState"];
     NSArray<NSString *> *arguments = [self scanArguments];
-    BOOL updateRecovery = [self recoveryEnabled] && ![self recoveryFrozen];
-    NSArray<NSString *> *recoveryArguments = updateRecovery ? [self recoveryBackupArguments] : nil;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        if (recoveryArguments != nil) {
-            NSDictionary *recoveryResult = [self runEngineArguments:recoveryArguments];
-            NSURL *errorMarker = [self recoveryErrorURL];
-            if ([recoveryResult[@"status"] intValue] == 0) {
-                [[NSFileManager defaultManager] removeItemAtURL:errorMarker error:nil];
-            } else {
-                NSData *marker = [@"The latest automatic recovery backup failed.\n" dataUsingEncoding:NSUTF8StringEncoding];
-                [marker writeToURL:errorMarker options:NSDataWritingAtomic error:nil];
-                chmod(errorMarker.fileSystemRepresentation, 0600);
-            }
-        }
         NSDictionary *result = [self runEngineArguments:arguments];
         dispatch_async(dispatch_get_main_queue(), ^{
-            self.scanning = NO;
             NSData *output = result[@"output"];
             NSError *jsonError = nil;
             id report = output.length ? [NSJSONSerialization JSONObjectWithData:output options:0 error:&jsonError] : nil;
@@ -861,11 +898,14 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
                 self.lastScanDate = [NSDate date];
                 [self persistLastReport];
                 [self freezeRecoveryForReport:(NSDictionary *)report];
+                self.scanning = NO;
                 [self notifyForReport:(NSDictionary *)report];
                 [self sendData:output function:@"receiveReport"];
                 [self sendObject:@{@"phase": @"ready", @"message": @"Scan completed"}
                         function:@"receiveState"];
+                [self refreshRecoveryAfterReport:(NSDictionary *)report];
             } else {
+                self.scanning = NO;
                 NSString *detail = result[@"error"];
                 if (detail.length == 0) detail = jsonError.localizedDescription ?: @"The detection engine returned no report.";
                 [self sendObject:@{@"phase": @"error", @"message": detail}
@@ -1324,7 +1364,7 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
 }
 
 - (void)enableRecovery {
-    if (self.scanning || [self recoveryEnabled]) return;
+    if (self.scanning || self.recoveryUpdating || [self recoveryEnabled]) return;
     NSAlert *alert = [[NSAlert alloc] init];
     alert.messageText = @"Enable the Recovery Vault?";
     alert.informativeText = @"RATtler will keep up to 512 MB of versioned document and photo copies in private local storage. Nothing is uploaded. The first backup may take several minutes.";
@@ -1333,19 +1373,22 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
     [alert addButtonWithTitle:@"Cancel"];
     if ([alert runModal] != NSAlertFirstButtonReturn) return;
 
-    self.scanning = YES;
-    [self sendObject:@{@"phase": @"scanning", @"message": @"Creating protected recovery copies…"}
+    self.recoveryUpdating = YES;
+    [self sendCapabilities];
+    [self sendObject:@{@"phase": @"working", @"message": @"Creating protected recovery copies in the background…"}
             function:@"receiveState"];
     NSArray<NSString *> *arguments = [self recoveryBackupArguments];
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         NSDictionary *result = [self runEngineArguments:arguments];
         dispatch_async(dispatch_get_main_queue(), ^{
-            self.scanning = NO;
+            self.recoveryUpdating = NO;
             NSData *output = result[@"output"];
             NSDictionary *document = output.length
                 ? [NSJSONSerialization JSONObjectWithData:output options:0 error:nil]
                 : nil;
-            if ([result[@"status"] intValue] == 0 && [document[@"applied"] boolValue]) {
+            BOOL aborted = [document[@"aborted"] boolValue];
+            if ([result[@"status"] intValue] == 0 && [document[@"applied"] boolValue] && !aborted) {
+                self.lastRecoveryRefreshDate = [NSDate date];
                 [[NSFileManager defaultManager] removeItemAtURL:[self recoveryErrorURL] error:nil];
                 NSInteger count = [document[@"stored_files"] integerValue];
                 [self sendObject:@{
@@ -1354,6 +1397,14 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
                 } function:@"receiveResponse"];
                 [self sendCapabilities];
                 [self startScan];
+            } else if (aborted) {
+                [self sendCapabilities];
+                [self sendObject:@{
+                    @"success": @NO,
+                    @"message": @"Recovery setup stopped because ransomware evidence froze the vault. Investigate before clearing the freeze.",
+                } function:@"receiveResponse"];
+                [self sendObject:@{@"phase": @"ready", @"message": @"Recovery setup frozen"}
+                        function:@"receiveState"];
             } else {
                 NSString *detail = [document[@"error"] isKindOfClass:[NSString class]] ? document[@"error"] : @"The Recovery Vault could not be enabled.";
                 [self sendObject:@{@"phase": @"error", @"message": detail} function:@"receiveState"];
@@ -1363,7 +1414,7 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
 }
 
 - (void)recoverFiles {
-    if (self.scanning || ![self recoveryEnabled]) return;
+    if (self.scanning || self.recoveryUpdating || ![self recoveryEnabled]) return;
     NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
     formatter.dateFormat = @"yyyy-MM-dd-HHmmss";
     NSString *folder = [NSString stringWithFormat:@"RATtler Recovered %@", [formatter stringFromDate:[NSDate date]]];
@@ -1438,7 +1489,8 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
 }
 
 - (void)resumeRecovery {
-    if (self.scanning || ![self recoveryFrozen]) return;
+    if (self.scanning || self.recoveryUpdating || ![self recoveryFrozen]) return;
+    BOOL enabled = [self recoveryEnabled];
     NSAlert *alert = [[NSAlert alloc] init];
     alert.messageText = @"Resume automatic recovery backups?";
     alert.informativeText = @"Only resume after investigating the ransomware finding and confirming that destructive activity has stopped. Existing recovery versions will remain in the vault.";
@@ -1452,10 +1504,15 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
                 function:@"receiveState"];
         return;
     }
+    self.lastRecoveryRefreshDate = nil;
     [self sendCapabilities];
-    [self sendObject:@{@"success": @YES, @"message": @"Automatic recovery backups resumed."}
+    [self sendObject:@{
+        @"success": @YES,
+        @"message": enabled ? @"Automatic recovery backups resumed."
+                             : @"Recovery freeze cleared. Enable the vault again when this Mac is trusted.",
+    }
             function:@"receiveResponse"];
-    [self startScan];
+    if (enabled) [self startScan];
 }
 
 - (NSDictionary *)runEngineArguments:(NSArray<NSString *> *)arguments {
@@ -1492,11 +1549,20 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
     task.standardInput = [NSFileHandle fileHandleWithNullDevice];
     task.standardOutput = output;
     task.standardError = error;
+    @synchronized (self) {
+        [self.engineTasks addObject:task];
+    }
     NSError *launchError = nil;
     if (![task launchAndReturnError:&launchError]) {
+        @synchronized (self) {
+            [self.engineTasks removeObject:task];
+        }
         return @{@"output": [NSData data], @"error": launchError.localizedDescription ?: @"Engine launch failed", @"status": @126};
     }
     [task waitUntilExit];
+    @synchronized (self) {
+        [self.engineTasks removeObject:task];
+    }
     [output synchronizeFile];
     [error synchronizeFile];
     [output seekToFileOffset:0];
@@ -1543,6 +1609,7 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
         @"detectionLab": @(detectionLab),
         @"recovery": @([self recoveryEnabled]),
         @"recoveryFrozen": @([self recoveryFrozen]),
+        @"recoveryUpdating": @(self.recoveryUpdating),
         @"recoveryError": @([[NSFileManager defaultManager] fileExistsAtPath:[self recoveryErrorURL].path]),
         @"installed": @(installed),
         @"appPath": appPath ?: @"",
@@ -1552,7 +1619,7 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
         @"launchAtLogin": @([self launchAtLoginEnabled]),
         @"launchAtLoginStatus": [self launchAtLoginStatus],
         @"notificationsEnabled": @(self.notificationsEnabled),
-        @"version": @"0.17.0",
+        @"version": @"0.18.0",
     }
             function:@"receiveCapabilities"];
 }
