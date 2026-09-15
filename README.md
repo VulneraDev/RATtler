@@ -11,8 +11,8 @@ the computer unless you export a report yourself.
 
 Download **one ZIP**—not both:
 
-- [Mac with an Apple chip](https://github.com/VulneraDev/RATtler/releases/download/v0.18.0/RATtler-macOS-Apple-Silicon.zip)
-- [Mac with an Intel processor](https://github.com/VulneraDev/RATtler/releases/download/v0.18.0/RATtler-macOS-Intel.zip)
+- [Mac with an Apple chip](https://github.com/VulneraDev/RATtler/releases/download/v0.19.0/RATtler-macOS-Apple-Silicon.zip)
+- [Mac with an Intel processor](https://github.com/VulneraDev/RATtler/releases/download/v0.19.0/RATtler-macOS-Intel.zip)
 
 Not sure which Mac you have? Open **Apple menu → About This Mac**:
 
@@ -190,6 +190,20 @@ runs before automatic vault refreshes; refresh work continues in the background
 and aborts without replacing the last complete manifest if ransomware evidence
 freezes the vault.
 
+Choose **Encrypted USB copy** to save the complete vault as one
+`.rattlervault` file on a removable drive. RATtler asks for the password twice
+in a native secure dialog, derives an encryption key with Argon2id, and streams
+the bundle through authenticated AES-256-GCM without creating a plaintext
+archive. **Restore USB copy** authenticates the entire bundle before creating a
+new recovery folder. RATtler never stores the password and cannot recover it if
+it is forgotten. Disconnect and safely store the drive after export—a connected
+USB drive is not offline protection.
+
+The encrypted export protects the removable copy. The working vault on this Mac
+still relies on private file permissions and macOS FileVault. See the
+[encrypted offline recovery guide](docs/ENCRYPTED_RECOVERY.md) for the exact
+format, safety model, and restore steps.
+
 ![RATtler Ransomware Defense](docs/images/rattler-ransomware.png)
 
 ## Risk example
@@ -222,7 +236,7 @@ Risk detected:
 - Near-real-time FSEvents triggers for Desktop, Documents, and Pictures, with
   burst coalescing, scan rate limiting, and BluePulse loss reconciliation
 - Opt-in, quota-limited, content-addressed recovery copies with automatic freeze
-  on ransomware evidence
+  on ransomware evidence and password-encrypted offline USB exports
 - BluePulse sensor confidence, scan freshness, state permissions, and event loss
 - Native menu-bar scheduling, explicit pause state, and a private operation
   heartbeat that verifies the host PID and scan interval

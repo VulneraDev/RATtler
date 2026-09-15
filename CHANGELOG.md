@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.19.0
+
+- Add password-encrypted `.rattlervault` exports for removable and offline
+  recovery storage
+- Use Argon2id with a unique 16-byte salt and authenticated streaming
+  AES-256-GCM rather than a custom cipher
+- Keep passwords out of WebKit, process arguments, files, reports, and logs by
+  collecting them in native secure fields and passing them over an anonymous pipe
+- Authenticate the complete USB bundle before creating any recovered file, then
+  verify each content-addressed object again during restore
+- Add native USB save/open flows, password confirmation, explicit eject guidance,
+  incomplete-export cleanup, and no-overwrite behavior
+- Add portable format documentation, tamper/wrong-password tests, the current
+  cryptography runtime on supported platforms, and its final universal Intel
+  build for the legacy Intel release
+
 ## 0.18.0
 
 - Add an interactive CSS 3D endpoint overview to the Dashboard with selectable

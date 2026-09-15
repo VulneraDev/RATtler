@@ -9,7 +9,7 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 from .ransomware import DEFAULT_MAX_FILES, _capture_filesystem
 
@@ -433,9 +433,45 @@ def _parser() -> argparse.ArgumentParser:
     restore_command.add_argument("--store", required=True)
     restore_command.add_argument("--destination", required=True)
     restore_command.add_argument("--apply", action="store_true")
-    for command in (backup_command, status_command, restore_command):
+    export_command = commands.add_parser("export", help="create a password-encrypted offline vault")
+    export_command.add_argument("--store", required=True)
+    export_command.add_argument("--destination", required=True)
+    export_command.add_argument("--password-stdin", action="store_true")
+    export_command.add_argument("--apply", action="store_true")
+    bundle_restore = commands.add_parser(
+        "restore-bundle", help="recover copies from an encrypted offline vault",
+    )
+    bundle_restore.add_argument("--archive", required=True)
+    bundle_restore.add_argument("--destination", required=True)
+    bundle_restore.add_argument("--password-stdin", action="store_true")
+    bundle_restore.add_argument("--apply", action="store_true")
+    for command in (
+        backup_command, status_command, restore_command, export_command, bundle_restore,
+    ):
         command.add_argument("--pretty", action="store_true")
     return parser
+
+
+def _stdin_password() -> bytes:
+    password = sys.stdin.buffer.readline(1026)
+    if password.endswith(b"\n"):
+        password = password[:-1]
+        if password.endswith(b"\r"):
+            password = password[:-1]
+    if len(password) > 1024:
+        raise ValueError("recovery password is too long")
+    return password
+
+
+def _recovery_password(from_stdin: bool, *, confirm: bool) -> Union[str, bytes]:
+    if from_stdin:
+        return _stdin_password()
+    import getpass
+
+    password = getpass.getpass("Recovery password: ")
+    if confirm and password != getpass.getpass("Confirm recovery password: "):
+        raise ValueError("recovery passwords did not match")
+    return password
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -451,8 +487,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             )
         elif args.command == "status":
             result = status(Path(args.store))
-        else:
+        elif args.command == "restore-all":
             result = restore_all(Path(args.store), Path(args.destination), apply=args.apply)
+        elif args.command == "export":
+            from .recovery_bundle import export_bundle
+
+            password = _recovery_password(args.password_stdin, confirm=True) if args.apply else None
+            result = export_bundle(
+                Path(args.store), Path(args.destination), password, apply=args.apply,
+            )
+        else:
+            from .recovery_bundle import restore_bundle
+
+            result = restore_bundle(
+                Path(args.archive), Path(args.destination),
+                _recovery_password(args.password_stdin, confirm=False), apply=args.apply,
+            )
     except (OSError, ValueError, TypeError, json.JSONDecodeError) as error:
         result = {"success": False, "error": str(error)}
         print(json.dumps(result, indent=2 if getattr(args, "pretty", False) else None, sort_keys=True))

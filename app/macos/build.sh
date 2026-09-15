@@ -42,13 +42,14 @@ cp "$repository_root/THIRD_PARTY_NOTICES.md" "$app_bundle/Contents/Resources/THI
 cp -R "$repository_root/licenses" "$app_bundle/Contents/Resources/Licenses"
 
 if $portable; then
-    python3 -c 'import importlib.metadata as metadata, yara; raise SystemExit(metadata.version("yara-python") != "4.5.4")' >/dev/null 2>&1 || {
-        echo "portable builds require yara-python 4.5.4" >&2
+    python3 -c 'import importlib.metadata as metadata, platform, sys, yara; from cryptography.hazmat.primitives.kdf.argon2 import Argon2id; expected = "48.0.1" if sys.platform == "darwin" and platform.machine() == "x86_64" else "50.0.1"; raise SystemExit(metadata.version("yara-python") != "4.5.4" or metadata.version("cryptography") != expected)' >/dev/null 2>&1 || {
+        echo "portable builds require yara-python 4.5.4 and the pinned cryptography runtime" >&2
         exit 2
     }
     python3 -m PyInstaller \
         --noconfirm --clean --onedir \
         --hidden-import yara \
+        --hidden-import rattler.recovery_bundle \
         --name rattler-engine \
         --paths "$repository_root/src" \
         --distpath "$build_root/engine-dist" \

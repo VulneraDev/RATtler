@@ -14,8 +14,8 @@ class MacOSAppSourceTests(unittest.TestCase):
         with (APP / "Info.plist").open("rb") as handle:
             info = plistlib.load(handle)
         self.assertEqual(info["CFBundleIdentifier"], "dev.vulnera.rattler")
-        self.assertEqual(info["CFBundleShortVersionString"], "0.18.0")
-        self.assertEqual(info["CFBundleVersion"], "22")
+        self.assertEqual(info["CFBundleShortVersionString"], "0.19.0")
+        self.assertEqual(info["CFBundleVersion"], "23")
         self.assertEqual(info["LSMinimumSystemVersion"], "13.0")
         self.assertTrue(info["LSMultipleInstancesProhibited"])
 
@@ -165,12 +165,30 @@ class MacOSAppSourceTests(unittest.TestCase):
         self.assertIn("self.recoveryUpdating = YES;", enable)
         self.assertNotIn("self.scanning = YES;", enable)
 
+    def test_encrypted_usb_recovery_keeps_password_out_of_webkit_and_arguments(self):
+        host = (APP / "Sources/main.m").read_text(encoding="utf-8")
+        script = (APP / "Resources/Web/app.js").read_text(encoding="utf-8")
+        setup = (ROOT / "setup.cfg").read_text(encoding="utf-8")
+        self.assertIn("NSSecureTextField", host)
+        self.assertIn('panel.prompt = @"Choose USB Location"', host)
+        self.assertIn('@"recovery", @"export"', host)
+        self.assertIn('@"recovery", @"restore-bundle"', host)
+        self.assertIn('@"--password-stdin"', host)
+        self.assertIn("runEngineArguments:arguments standardInput:input", host)
+        self.assertIn("resetBytesInRange", host)
+        self.assertNotIn('@"--password",', host)
+        self.assertIn('native("exportRecoveryBundle")', script)
+        self.assertIn('native("restoreRecoveryBundle")', script)
+        self.assertNotIn("password", script.lower())
+        self.assertIn("cryptography==48.0.1", setup)
+        self.assertIn("cryptography==50.0.1", setup)
+
     def test_download_and_gatekeeper_instructions_are_plain(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         build = (APP / "build.sh").read_text(encoding="utf-8")
         self.assertIn("Download **one ZIP**", readme)
-        self.assertIn("releases/download/v0.18.0/RATtler-macOS-Apple-Silicon.zip", readme)
-        self.assertIn("releases/download/v0.18.0/RATtler-macOS-Intel.zip", readme)
+        self.assertIn("releases/download/v0.19.0/RATtler-macOS-Apple-Silicon.zip", readme)
+        self.assertIn("releases/download/v0.19.0/RATtler-macOS-Intel.zip", readme)
         self.assertIn("System Settings → Privacy & Security", readme)
         self.assertIn("Open Anyway", readme)
         self.assertIn('release_architecture="Apple-Silicon"', build)

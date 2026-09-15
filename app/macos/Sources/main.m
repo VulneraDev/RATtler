@@ -50,7 +50,11 @@ static void RATFileEventCallback(ConstFSEventStreamRef streamRef, void *clientCa
 - (void)enableRecovery;
 - (void)recoverFiles;
 - (void)resumeRecovery;
+- (void)exportRecoveryBundle;
+- (void)restoreRecoveryBundle;
 - (void)refreshRecoveryAfterReport:(NSDictionary *)report;
+- (NSDictionary *)runEngineArguments:(NSArray<NSString *> *)arguments;
+- (NSDictionary *)runEngineArguments:(NSArray<NSString *> *)arguments standardInput:(NSData *)input;
 - (void)planFindingException:(NSDictionary *)exception fileScan:(BOOL)fileScan;
 - (NSArray<NSString *> *)exceptionArgumentsForFinding:(NSDictionary *)exception apply:(BOOL)apply;
 - (void)listExceptions;
@@ -461,6 +465,10 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
         [self recoverFiles];
     } else if ([action isEqualToString:@"resumeRecovery"]) {
         [self resumeRecovery];
+    } else if ([action isEqualToString:@"exportRecoveryBundle"]) {
+        [self exportRecoveryBundle];
+    } else if ([action isEqualToString:@"restoreRecoveryBundle"]) {
+        [self restoreRecoveryBundle];
     } else if ([action isEqualToString:@"revealRecovery"]) {
         NSURL *directory = [[self applicationDataDirectory] URLByAppendingPathComponent:@"recovery"
                                                                               isDirectory:YES];
@@ -1515,7 +1523,172 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
     if (enabled) [self startScan];
 }
 
+- (NSString *)recoveryPasswordConfirming:(BOOL)confirm {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = confirm ? @"Protect the offline recovery copy" : @"Unlock the offline recovery copy";
+    alert.informativeText = confirm
+        ? @"Enter at least 12 characters. RATtler cannot recover a forgotten password. It is passed only to RATtler's local engine and is never saved or sent over the network."
+        : @"Enter the password used when this encrypted recovery copy was created. It is passed only to RATtler's local engine and is never saved or sent over the network.";
+    alert.alertStyle = NSAlertStyleInformational;
+    NSSecureTextField *password = [NSSecureTextField textFieldWithString:@""];
+    password.placeholderString = confirm ? @"Recovery password (12+ characters)" : @"Recovery password";
+    password.frame = NSMakeRect(0, 0, 390, 26);
+    NSStackView *fields = [NSStackView stackViewWithViews:@[password]];
+    fields.orientation = NSUserInterfaceLayoutOrientationVertical;
+    fields.spacing = 8;
+    fields.frame = NSMakeRect(0, 0, 390, confirm ? 60 : 28);
+    NSSecureTextField *confirmation = nil;
+    if (confirm) {
+        confirmation = [NSSecureTextField textFieldWithString:@""];
+        confirmation.placeholderString = @"Confirm recovery password";
+        [fields addArrangedSubview:confirmation];
+    }
+    alert.accessoryView = fields;
+    [alert addButtonWithTitle:confirm ? @"Create Encrypted Copy" : @"Unlock and Recover"];
+    [alert addButtonWithTitle:@"Cancel"];
+    if ([alert runModal] != NSAlertFirstButtonReturn) {
+        password.stringValue = @"";
+        confirmation.stringValue = @"";
+        return nil;
+    }
+    NSString *secret = [password.stringValue copy];
+    NSUInteger passwordBytes = [secret lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
+    BOOL tooLong = passwordBytes > 1024;
+    BOOL valid = secret.length > 0 && !tooLong && (!confirm || secret.length >= 12);
+    BOOL matches = !confirm || [secret isEqualToString:confirmation.stringValue];
+    password.stringValue = @"";
+    confirmation.stringValue = @"";
+    if (!valid || !matches) {
+        [self sendObject:@{
+            @"success": @NO,
+            @"message": tooLong ? @"The recovery password is too long."
+                         : !valid ? @"Use a recovery password with at least 12 characters."
+                                  : @"The two recovery passwords did not match.",
+        } function:@"receiveResponse"];
+        return nil;
+    }
+    return secret;
+}
+
+- (NSMutableData *)passwordInputData:(NSString *)password {
+    NSMutableData *input = [NSMutableData dataWithData:[password dataUsingEncoding:NSUTF8StringEncoding]];
+    const unsigned char newline = '\n';
+    [input appendBytes:&newline length:1];
+    return input;
+}
+
+- (void)exportRecoveryBundle {
+    if (self.recoveryUpdating || ![self recoveryEnabled]) return;
+    NSSavePanel *panel = [NSSavePanel savePanel];
+    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+    formatter.dateFormat = @"yyyy-MM-dd-HHmm";
+    panel.nameFieldStringValue = [NSString stringWithFormat:@"RATtler-Recovery-%@.rattlervault", [formatter stringFromDate:[NSDate date]]];
+    UTType *vaultType = [UTType typeWithFilenameExtension:@"rattlervault"];
+    panel.allowedContentTypes = vaultType != nil ? @[vaultType] : @[UTTypeData];
+    panel.canCreateDirectories = YES;
+    panel.prompt = @"Choose USB Location";
+    panel.message = @"Choose a USB drive under Locations. RATtler creates one encrypted file and never overwrites an existing copy.";
+    if ([panel runModal] != NSModalResponseOK || panel.URL == nil) return;
+    NSString *password = [self recoveryPasswordConfirming:YES];
+    if (password == nil) return;
+    NSMutableData *input = [self passwordInputData:password];
+    password = nil;
+    NSURL *store = [[self applicationDataDirectory] URLByAppendingPathComponent:@"recovery" isDirectory:YES];
+    NSURL *destination = panel.URL;
+    self.recoveryUpdating = YES;
+    [self sendCapabilities];
+    [self sendObject:@{@"phase": @"working", @"message": @"Encrypting the offline recovery copy…"}
+            function:@"receiveState"];
+    NSArray<NSString *> *arguments = @[
+        @"recovery", @"export", @"--store", store.path,
+        @"--destination", destination.path, @"--password-stdin", @"--apply", @"--pretty",
+    ];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSDictionary *result = [self runEngineArguments:arguments standardInput:input];
+        [input resetBytesInRange:NSMakeRange(0, input.length)];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.recoveryUpdating = NO;
+            NSData *output = result[@"output"];
+            NSDictionary *document = output.length
+                ? [NSJSONSerialization JSONObjectWithData:output options:0 error:nil] : nil;
+            if ([result[@"status"] intValue] == 0 && [document[@"applied"] boolValue]) {
+                [self sendObject:@{
+                    @"success": @YES,
+                    @"message": @"Encrypted recovery copy saved. Eject the USB drive before storing it offline.",
+                } function:@"receiveResponse"];
+                [[NSWorkspace sharedWorkspace] activateFileViewerSelectingURLs:@[destination]];
+                [self sendObject:@{@"phase": @"ready", @"message": @"Encrypted USB copy created"}
+                        function:@"receiveState"];
+            } else {
+                NSString *detail = [document[@"error"] isKindOfClass:[NSString class]]
+                    ? document[@"error"] : @"The encrypted recovery copy could not be created.";
+                [self sendObject:@{@"phase": @"error", @"message": detail} function:@"receiveState"];
+            }
+            [self sendCapabilities];
+        });
+    });
+}
+
+- (void)restoreRecoveryBundle {
+    if (self.recoveryUpdating) return;
+    NSOpenPanel *panel = [NSOpenPanel openPanel];
+    UTType *vaultType = [UTType typeWithFilenameExtension:@"rattlervault"];
+    panel.allowedContentTypes = vaultType != nil ? @[vaultType] : @[UTTypeData];
+    panel.canChooseFiles = YES;
+    panel.canChooseDirectories = NO;
+    panel.allowsMultipleSelection = NO;
+    panel.message = @"Choose an encrypted RATtler recovery copy from a connected USB drive.";
+    if ([panel runModal] != NSModalResponseOK || panel.URL == nil) return;
+    NSString *password = [self recoveryPasswordConfirming:NO];
+    if (password == nil) return;
+    NSMutableData *input = [self passwordInputData:password];
+    password = nil;
+    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+    formatter.dateFormat = @"yyyy-MM-dd-HHmmss";
+    NSString *folder = [NSString stringWithFormat:@"RATtler USB Recovery %@", [formatter stringFromDate:[NSDate date]]];
+    NSURL *destination = [[NSURL fileURLWithPath:[NSHomeDirectory() stringByAppendingPathComponent:@"Desktop"]
+                                     isDirectory:YES] URLByAppendingPathComponent:folder isDirectory:YES];
+    NSURL *archive = panel.URL;
+    self.recoveryUpdating = YES;
+    [self sendCapabilities];
+    [self sendObject:@{@"phase": @"working", @"message": @"Authenticating the encrypted USB copy…"}
+            function:@"receiveState"];
+    NSArray<NSString *> *arguments = @[
+        @"recovery", @"restore-bundle", @"--archive", archive.path,
+        @"--destination", destination.path, @"--password-stdin", @"--apply", @"--pretty",
+    ];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSDictionary *result = [self runEngineArguments:arguments standardInput:input];
+        [input resetBytesInRange:NSMakeRange(0, input.length)];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.recoveryUpdating = NO;
+            NSData *output = result[@"output"];
+            NSDictionary *document = output.length
+                ? [NSJSONSerialization JSONObjectWithData:output options:0 error:nil] : nil;
+            if ([result[@"status"] intValue] == 0 && [document[@"applied"] boolValue]) {
+                NSInteger restored = [document[@"restored_files"] integerValue];
+                [self sendObject:@{
+                    @"success": @YES,
+                    @"message": [NSString stringWithFormat:@"Recovered %ld files from the encrypted USB copy.", (long)restored],
+                } function:@"receiveResponse"];
+                [[NSWorkspace sharedWorkspace] activateFileViewerSelectingURLs:@[destination]];
+                [self sendObject:@{@"phase": @"ready", @"message": @"Offline recovery copy restored"}
+                        function:@"receiveState"];
+            } else {
+                NSString *detail = [document[@"error"] isKindOfClass:[NSString class]]
+                    ? document[@"error"] : @"The encrypted recovery copy could not be opened.";
+                [self sendObject:@{@"phase": @"error", @"message": detail} function:@"receiveState"];
+            }
+            [self sendCapabilities];
+        });
+    });
+}
+
 - (NSDictionary *)runEngineArguments:(NSArray<NSString *> *)arguments {
+    return [self runEngineArguments:arguments standardInput:nil];
+}
+
+- (NSDictionary *)runEngineArguments:(NSArray<NSString *> *)arguments standardInput:(NSData *)input {
     NSURL *engine = [[NSBundle mainBundle] URLForResource:@"rattler-engine"
                                             withExtension:nil
                                              subdirectory:@"Engine"];
@@ -1546,7 +1719,8 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
     NSTask *task = [[NSTask alloc] init];
     task.executableURL = engine;
     task.arguments = arguments;
-    task.standardInput = [NSFileHandle fileHandleWithNullDevice];
+    NSPipe *inputPipe = input != nil ? [NSPipe pipe] : nil;
+    task.standardInput = inputPipe != nil ? inputPipe : [NSFileHandle fileHandleWithNullDevice];
     task.standardOutput = output;
     task.standardError = error;
     @synchronized (self) {
@@ -1558,6 +1732,10 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
             [self.engineTasks removeObject:task];
         }
         return @{@"output": [NSData data], @"error": launchError.localizedDescription ?: @"Engine launch failed", @"status": @126};
+    }
+    if (inputPipe != nil) {
+        [inputPipe.fileHandleForWriting writeData:input];
+        [inputPipe.fileHandleForWriting closeFile];
     }
     [task waitUntilExit];
     @synchronized (self) {
@@ -1619,7 +1797,7 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
         @"launchAtLogin": @([self launchAtLoginEnabled]),
         @"launchAtLoginStatus": [self launchAtLoginStatus],
         @"notificationsEnabled": @(self.notificationsEnabled),
-        @"version": @"0.18.0",
+        @"version": @"0.19.0",
     }
             function:@"receiveCapabilities"];
 }

@@ -44,6 +44,18 @@ freeze marker; ransomware evidence aborts an in-progress refresh without
 replacing the last complete manifest. Reviewed recovery creates a new Desktop
 folder and never overwrites originals.
 
+An enabled vault can be exported from the same view as one password-encrypted
+`.rattlervault` file. The native app collects and confirms the password in
+`NSSecureTextField` controls, passes it to the engine over an anonymous pipe,
+and clears the input buffer after use. It never sends the password through
+WebKit, a process argument, a file, or the network. The user chooses a mounted
+USB destination with `NSSavePanel`; incomplete exports retain a `.partial`
+suffix only while being written and are removed after a failure; existing
+bundles are never intentionally replaced. Restore verifies
+the complete authenticated stream before creating a new Desktop folder. Exact
+format and threat boundaries are in
+[the encrypted recovery guide](../../docs/ENCRYPTED_RECOVERY.md).
+
 Deep Scan reads only a file or folder selected through the native picker. It
 applies the bundled community YARA rules, calculates SHA-256, inspects Mach-O
 signing, and returns explainable static evidence. Scanning is bounded and local;
@@ -96,6 +108,7 @@ Install the build-only dependency and create a self-contained ZIP file:
 
 ```sh
 MACOSX_DEPLOYMENT_TARGET=13.0 python3 -m pip install pyinstaller
+MACOSX_DEPLOYMENT_TARGET=13.0 python3 -m pip install -e .
 MACOSX_DEPLOYMENT_TARGET=13.0 python3 -m pip install \
   --no-binary=yara-python yara-python==4.5.4
 ./app/macos/build.sh --portable --archive
@@ -107,7 +120,7 @@ notarized, so macOS identifies them as community preview builds. The release
 workflow builds separate Apple Silicon and Intel artifacts on GitHub-hosted
 macOS runners.
 
-Portable bundles include the YARA and yara-python license texts under app
+Portable bundles include the cryptography, YARA, and yara-python license texts under app
 Resources. See [`THIRD_PARTY_NOTICES.md`](../../THIRD_PARTY_NOTICES.md).
 
 ## Verify a GitHub release (optional)

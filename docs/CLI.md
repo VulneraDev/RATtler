@@ -5,7 +5,7 @@ developers and operators who want the command line.
 
 ## Install and scan
 
-Python 3.9 or newer is required.
+Python 3.9.2 or newer is required.
 
 ```sh
 python3 -m pip install -e .
@@ -165,7 +165,7 @@ does not decide whether activity is ransomware.
 The default quota is 512 MiB and the per-file limit is 16 MiB. Only common
 document and photo extensions are copied, objects are content-addressed, and up
 to three versions are retained per path. The macOS app refreshes an enabled
-vault before scans and freezes it when a ransomware finding appears.
+vault after detection and freezes it when a ransomware finding appears.
 
 Recovery is also planned before application and always targets a new directory:
 
@@ -178,6 +178,31 @@ rattler recovery restore-all --store ~/.rattler/recovery \
 
 The destination must not already exist. Stored object hashes are verified, and
 the command never writes over an original file.
+
+Create one password-encrypted file on a mounted USB drive. RATtler prompts for
+the password twice without echoing it:
+
+```sh
+rattler recovery export \
+  --store ~/.rattler/recovery \
+  --destination /Volumes/RECOVERY/RATtler-Recovery.rattlervault \
+  --apply --pretty
+```
+
+Restore from that copy into a new directory:
+
+```sh
+rattler recovery restore-bundle \
+  --archive /Volumes/RECOVERY/RATtler-Recovery.rattlervault \
+  --destination ~/Desktop/RATtler-USB-Recovery \
+  --apply --pretty
+```
+
+The desktop app is safer and simpler because its native secure fields avoid a
+shell. Scripts may opt into one-line standard input with `--password-stdin`, but
+must never place the password directly in an argument or source file. Export
+requires at least 12 characters. The password is never stored and cannot be
+reset. See [Encrypted offline recovery](ENCRYPTED_RECOVERY.md).
 
 ## Integrity baseline
 

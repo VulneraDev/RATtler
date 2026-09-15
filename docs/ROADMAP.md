@@ -242,6 +242,23 @@ Status: implemented.
 - Track native child tasks and terminate active engine work during a clean app
   shutdown.
 
+## 0.19 — Encrypted offline recovery
+
+Status: implemented.
+
+- Export an enabled Recovery Vault as one password-encrypted `.rattlervault`
+  file to a user-selected removable drive.
+- Use Argon2id and authenticated streaming AES-256-GCM from PyCA cryptography;
+  do not invent a cipher or write a plaintext staging archive.
+- Collect and confirm the password in native secure fields, deliver it to the
+  local engine over standard input, and keep it out of WebKit and arguments.
+- Refuse weak export passwords, existing destinations, symbolic-link bundles,
+  oversized inputs, malformed KDF parameters, and unsafe archive layouts.
+- Authenticate a bundle fully before recovery, verify every object hash, and
+  restore only into a new Desktop directory.
+- Treat unplugging and safely storing the drive as part of the offline boundary;
+  a connected USB device remains exposed to endpoint compromise.
+
 ## 1.0 — Signed system extension and tamper evidence
 
 Status: planned after prevention validation.

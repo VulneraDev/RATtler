@@ -63,7 +63,7 @@
         @"launchAtLogin": @YES,
         @"launchAtLoginStatus": @"enabled",
         @"notificationsEnabled": @YES,
-        @"version": @"0.18.0",
+        @"version": @"0.19.0",
     } options:0 error:nil];
     NSData *ready = [NSJSONSerialization dataWithJSONObject:@{
         @"phase": @"ready",
